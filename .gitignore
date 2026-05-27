@@ -1,0 +1,18 @@
+# Python (Backend / FastAPI)
+__pycache__/
+*.pyc
+.venv/
+venv/
+ENV/
+.env
+
+# Node.js (Frontend / React)
+frontend/node_modules/
+frontend/dist/
+.eslintcache
+
+# OS & IDE (Mac/Windows 공통 및 VS Code)
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
