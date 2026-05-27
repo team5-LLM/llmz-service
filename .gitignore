@@ -5,6 +5,12 @@ __pycache__/
 venv/
 ENV/
 .env
+.env.*
+*.key
+secrets.json
+local_settings.py
+!*.example
+analysis_result.json
 
 # Node.js (Frontend / React)
 frontend/node_modules/
