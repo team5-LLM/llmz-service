@@ -1,0 +1,69 @@
+{
+  "보고서 작성형": {
+    "service_name": "보고서 자동 생성기",
+    "expected_effect": "주간·월간 반복 보고서 작성 시간을 줄이고 보고서 형식을 표준화합니다.",
+    "difficulty": "중",
+    "required_resources": [
+      "Azure OpenAI",
+      "Blob Storage",
+      "App Service"
+    ]
+  },
+  "코드 생성형": {
+    "service_name": "개발 생산성 Copilot",
+    "expected_effect": "반복 코드 작성, 에러 분석, 테스트 코드 생성 시간을 줄입니다.",
+    "difficulty": "중",
+    "required_resources": [
+      "Azure OpenAI",
+      "FastAPI",
+      "GitHub"
+    ]
+  },
+  "고객 응대형": {
+    "service_name": "상담/FAQ Agent",
+    "expected_effect": "반복 고객 문의 응대와 FAQ 작성 업무를 표준화합니다.",
+    "difficulty": "중상",
+    "required_resources": [
+      "Azure OpenAI",
+      "Azure AI Search",
+      "App Service"
+    ]
+  },
+  "문서 요약형": {
+    "service_name": "RAG 검색/요약 시스템",
+    "expected_effect": "긴 문서 탐색, 요약, 핵심 조항 확인 업무를 줄입니다.",
+    "difficulty": "중",
+    "required_resources": [
+      "Azure OpenAI",
+      "Azure AI Search",
+      "Blob Storage"
+    ]
+  },
+  "데이터 분석형": {
+    "service_name": "BI Agent",
+    "expected_effect": "반복 데이터 조회, 지표 해석, 성과 분석 요청을 줄입니다.",
+    "difficulty": "중상",
+    "required_resources": [
+      "Azure SQL",
+      "Azure OpenAI",
+      "FastAPI"
+    ]
+  },
+  "단순 검색/질문형": {
+    "service_name": "사내 지식검색 챗봇",
+    "expected_effect": "반복적인 사내 지식 질의와 기본 개념 검색 시간을 줄입니다.",
+    "difficulty": "하",
+    "required_resources": [
+      "Azure OpenAI",
+      "Azure AI Search"
+    ]
+  },
+  "기타": {
+    "service_name": "업무 아이디어 정리 도우미",
+    "expected_effect": "비정형 요청을 정리하고 반복 가능 업무를 발굴합니다.",
+    "difficulty": "하",
+    "required_resources": [
+      "Azure OpenAI"
+    ]
+  }
+}
