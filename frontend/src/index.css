@@ -1,0 +1,47 @@
+@import "tailwindcss";
+@import "pretendard/dist/web/variable/pretendardvariable.css";
+
+@layer base {
+  body {
+    font-family: "Pretendard Variable", sans-serif;
+    letter-spacing: -0.02em; /* 자간 */
+  }
+}
+
+@theme {
+  /* 폰트 사이즈 */
+  --text-xs: 0.75rem;    /* 12px */
+  --text-sm: 0.875rem;   /* 14px */
+  --text-md: 1rem;       /* 16px */
+  --text-lg: 1.25rem;    /* 20px */
+  --text-xl: 1.5rem;     /* 24px */
+  --text-xxl: 2rem;      /* 32px */
+
+  /* radius */
+  --radius-sm: 6px;
+  --radius-lg: 16px;
+
+  /* 색상 커스텀 */
+  --color-primary: #165EFF;
+  --color-primary-light: #DFE7FF;
+  --color-secondary: #F14E3C;
+  --color-secondary-light: #F8EAE7;
+
+  --color-chart-pink: #FFCEDF;
+  --color-chart-coral: #FEB7A7;
+  --color-chart-green: #C4DEC8;
+  --color-chart-blue: #9CB5FF;
+  --color-chart-purple: #BDADEC;
+
+  --color-risk-low: #D8F1CF;
+  --color-risk-medium: #FFF2C9;
+  --color-risk-high: #FFC9C9;
+  --color-risk-critical: #E0D2F8;
+
+  --color-gray-100: #E0E0E0;
+  --color-gray-500: #CCCCCC;
+  --color-bg: #F5F6FA;
+  --color-white: #FFFFFF;
+  --color-black: #2C2C2C;
+}
+
