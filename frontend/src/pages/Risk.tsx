@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { analyzeSample } from '../api'
 import type { DepartmentStat, RiskLevel } from '../api/types'
 
+
 const levelStyle: Record<RiskLevel, { bg: string; color: string }> = {
   Low:      { bg: '#D8F1CF', color: '#2d6a2d' },
   Medium:   { bg: '#FFF2C9', color: '#856c00' },
