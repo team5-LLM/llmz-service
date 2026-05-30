@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.db.blob import delete_blob, is_storage_configured, storage_status, upload_csv_bytes
 from app.db.sql import init_db, is_sql_configured, sql_status
 from app.services import upload_history_service as history_svc
 from app.services.analysis_pipeline import analyze_csv_file
@@ -65,9 +66,11 @@ def root():
 @app.get("/api/health")
 def health_check():
     db = sql_status()
+    storage = storage_status()
     return {
         "status": "ok",
         "db": db,
+        "storage": storage,
     }
 
 
@@ -88,10 +91,11 @@ def analyze_sample():
 async def upload_csv(file: UploadFile = File(...)):
     """실행 흐름:
         1) upload_history INSERT (status=pending)
-        2) tempfile 저장 → analyze_csv_file → 결과 산출
-        3) 성공 시 upload_history UPDATE (status=completed + summary)
-           실패 시 upload_history UPDATE (status=failed + error_message)
-        4) 응답에 upload_id 포함 → FE 가 SCR-INPUT-004 화면에서 추적 가능
+        2) Blob 임시 업로드 (설정 시) → blob_path 기록
+        3) tempfile 저장 → analyze_csv_file → 결과 산출
+        4) 분석 후 Blob 삭제 → blob_purged_at 기록 (Lifecycle 7일은 백업)
+        5) 성공/실패 upload_history UPDATE
+        6) 응답에 upload_id 포함 → FE 가 SCR-INPUT-004 화면에서 추적 가능
     """
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="CSV 파일만 업로드할 수 있습니다.")
@@ -102,10 +106,28 @@ async def upload_csv(file: UploadFile = File(...)):
     )
 
     started = time.monotonic()
+    blob_name: str | None = None
     try:
         history_svc.mark_processing(history_doc)
 
         content = await file.read()
+
+        if is_storage_configured():
+            try:
+                blob_path, blob_name = upload_csv_bytes(
+                    upload_id=history_doc.upload_id,
+                    filename=file.filename,
+                    data=content,
+                )
+                history_svc.record_blob_path(history_doc, blob_path)
+            except Exception as exc:
+                logger.warning(
+                    "Blob 업로드 실패 — 로컬 tempfile 분석만 진행 (upload_id=%s): %s",
+                    history_doc.upload_id,
+                    exc,
+                )
+                blob_name = None
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
             tmp.write(content)
             tmp_path = Path(tmp.name)
@@ -146,6 +168,17 @@ async def upload_csv(file: UploadFile = File(...)):
             status_code=500,
             detail=f"분석 처리 중 오류가 발생했습니다: {exc}",
         )
+    finally:
+        if blob_name and is_storage_configured():
+            try:
+                delete_blob(blob_name)
+                history_svc.record_blob_purged(history_doc)
+            except Exception as exc:
+                logger.warning(
+                    "Blob 삭제 실패 — Portal Lifecycle(7일)이 정리합니다 (upload_id=%s): %s",
+                    history_doc.upload_id,
+                    exc,
+                )
 
 
 # 업로드 이력 목록 조회 API

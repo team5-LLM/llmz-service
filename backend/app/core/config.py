@@ -27,11 +27,10 @@ _REQUIRED_ODBC_DRIVERS = (
     "ODBC Driver 17 for SQL Server",
 )
 
-
 class OdbcDriverMissingError(RuntimeError):
     """팀 공통 전제: ODBC Driver 17/18 미설치."""
 
-
+# ODBC Driver 설치 여부 확인
 def list_installed_odbc_drivers() -> list[str]:
     try:
         import pyodbc
@@ -40,6 +39,7 @@ def list_installed_odbc_drivers() -> list[str]:
     return list(pyodbc.drivers())
 
 
+# ODBC Driver 선택
 def pick_odbc_driver() -> str | None:
     installed = list_installed_odbc_drivers()
     for name in _REQUIRED_ODBC_DRIVERS:
@@ -47,7 +47,7 @@ def pick_odbc_driver() -> str | None:
             return name
     return None
 
-
+# ODBC Driver 필수 확인
 def require_odbc_driver() -> str:
     driver = pick_odbc_driver()
     if driver:
@@ -60,7 +60,7 @@ def require_odbc_driver() -> str:
         "  Windows: msodbcsql.msi x64 설치 후 터미널 재시작"
     )
 
-
+# ODBC Driver 적용
 def _apply_odbc_driver(raw: str, driver: str) -> str:
     encoded_driver = quote(driver, safe="")
     if "driver=" in raw.lower():
@@ -68,7 +68,7 @@ def _apply_odbc_driver(raw: str, driver: str) -> str:
     separator = "&" if "?" in raw else "?"
     return f"{raw}{separator}driver={encoded_driver}&Encrypt=yes&TrustServerCertificate=no"
 
-
+# 연결 문자열 보정
 def resolve_connection_string(raw: str) -> str:
     """pyodbc + ODBC Driver 17/18 기준으로 연결 문자열 보정."""
     if not raw:
@@ -83,7 +83,7 @@ def resolve_connection_string(raw: str) -> str:
     driver = require_odbc_driver()
     return _apply_odbc_driver(raw, driver)
 
-
+# SQL 설정 클래스
 @dataclass(frozen=True)
 class SqlSettings:
     connection_string: str
@@ -92,10 +92,28 @@ class SqlSettings:
     def is_configured(self) -> bool:
         return bool(self.connection_string)
 
-
+# SQL 설정 가져오기
 @lru_cache
 def get_sql_settings() -> SqlSettings:
     raw = os.getenv("AZURE_SQL_CONNECTION_STRING", "").strip()
     if not raw:
         return SqlSettings(connection_string="")
     return SqlSettings(connection_string=resolve_connection_string(raw))
+
+
+# 스토리지 설정 클래스
+@dataclass(frozen=True)
+class StorageSettings:
+    connection_string: str
+    container: str
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.connection_string)
+
+# 스토리지 설정 가져오기
+@lru_cache
+def get_storage_settings() -> StorageSettings:
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "").strip()
+    container = os.getenv("AZURE_STORAGE_CONTAINER", "uploads").strip() or "uploads"
+    return StorageSettings(connection_string=connection_string, container=container)

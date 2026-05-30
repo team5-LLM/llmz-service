@@ -32,11 +32,11 @@ from app.models.upload_history_table import UploadHistoryRow
 
 logger = logging.getLogger(__name__)
 
-
+# JSON 직렬화
 def _dump_json(value) -> str:
     return json.dumps(value, ensure_ascii=False)
 
-
+# JSON 역직렬화
 def _load_json(raw: str | None, default):
     if not raw:
         return default
@@ -45,7 +45,7 @@ def _load_json(raw: str | None, default):
     except json.JSONDecodeError:
         return default
 
-
+# 데이터베이스 행을 Pydantic 모델로 변환
 def _row_to_doc(row: UploadHistoryRow) -> UploadHistoryDoc:
     status_history_raw = _load_json(row.status_history_json, [])
     validation_errors_raw = _load_json(row.validation_errors_json, [])
@@ -80,7 +80,7 @@ def _status_value(status) -> str:
         return status.value
     return str(status)
 
-
+# Pydantic 모델을 데이터베이스 행에 적용
 def _apply_doc_to_row(row: UploadHistoryRow, doc: UploadHistoryDoc) -> None:
     row.id = doc.id
     row.filename = doc.filename
@@ -106,7 +106,7 @@ def _apply_doc_to_row(row: UploadHistoryRow, doc: UploadHistoryDoc) -> None:
     row.completed_at = doc.completed_at
     row.duration_ms = doc.duration_ms
 
-
+# 업로드 이력 저장/업데이트
 def _upsert(doc: UploadHistoryDoc) -> Optional[UploadHistoryDoc]:
     session = safe_session()
     if session is None:
@@ -129,7 +129,7 @@ def _upsert(doc: UploadHistoryDoc) -> Optional[UploadHistoryDoc]:
     finally:
         session.close()
 
-
+# 업로드 시작 시점 호출
 def create_upload(
     *,
     filename: str,
@@ -146,13 +146,13 @@ def create_upload(
     _upsert(doc)
     return doc
 
-
+# 분석 시작 시점 호출
 def mark_processing(doc: UploadHistoryDoc, message: str = "분석 시작") -> UploadHistoryDoc:
     doc.push_status(UploadStatus.PROCESSING, message=message)
     _upsert(doc)
     return doc
 
-
+# 분석 완료 시점 호출
 def mark_completed(
     doc: UploadHistoryDoc,
     *,
@@ -172,7 +172,19 @@ def mark_completed(
     _upsert(doc)
     return doc
 
+# Blob 경로 기록
+def record_blob_path(doc: UploadHistoryDoc, blob_path: str) -> UploadHistoryDoc:
+    doc.blob_path = blob_path
+    _upsert(doc)
+    return doc
 
+# Blob 삭제 시점 기록
+def record_blob_purged(doc: UploadHistoryDoc) -> UploadHistoryDoc:
+    doc.blob_purged_at = _now_iso()
+    _upsert(doc)
+    return doc
+
+# 분석 실패 시점 호출
 def mark_failed(doc: UploadHistoryDoc, *, error_message: str) -> UploadHistoryDoc:
     doc.error_message = error_message
     doc.completed_at = _now_iso()
@@ -181,6 +193,7 @@ def mark_failed(doc: UploadHistoryDoc, *, error_message: str) -> UploadHistoryDo
     return doc
 
 
+# 검증 오류 처리
 def attach_validation_errors(
     doc: UploadHistoryDoc, errors: List[ValidationErrorItem]
 ) -> UploadHistoryDoc:
@@ -189,7 +202,7 @@ def attach_validation_errors(
     _upsert(doc)
     return doc
 
-
+# 업로드 이력 페이징 조회   
 def list_uploads(*, limit: int = 50, skip: int = 0) -> List[UploadHistoryDoc]:
     """이력 페이징 조회. 최신 업로드부터 정렬"""
     session = safe_session()
@@ -211,7 +224,7 @@ def list_uploads(*, limit: int = 50, skip: int = 0) -> List[UploadHistoryDoc]:
     finally:
         session.close()
 
-
+# 업로드 이력 총 개수 조회
 def count_uploads() -> int:
     session = safe_session()
     if session is None:
@@ -225,7 +238,7 @@ def count_uploads() -> int:
     finally:
         session.close()
 
-
+# 업로드 이력 단일 조회
 def get_upload(upload_id: str) -> Optional[UploadHistoryDoc]:
     """upload_id 단일 조회."""
     session = safe_session()
