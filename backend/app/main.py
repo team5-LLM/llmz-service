@@ -1,10 +1,13 @@
+import logging
 import time
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.db.sql import init_db, is_sql_configured, sql_status
 from app.services import upload_history_service as history_svc
 from app.services.analysis_pipeline import analyze_csv_file
 from app.services.recommender import build_recommendation_detail
@@ -14,11 +17,27 @@ from app.schemas.upload_history import (
     UploadHistoryListResponse,
 )
 
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if is_sql_configured():
+        if init_db():
+            logger.info("Azure SQL 초기화 완료")
+        else:
+            logger.warning(
+                "Azure SQL 초기화 실패 — 분석 API는 동작하지만 upload_history 저장은 skip 됩니다."
+            )
+    yield
+
+
 # FastAPI 애플리케이션 설정
 app = FastAPI(
     title="LLM Automation Opportunity API",
     description="CSV 기반 부서별 LLM 사용 패턴 분석 및 AI 업무 자동화 추천 API",
-    version="0.3.0",
+    version="0.4.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -45,7 +64,11 @@ def root():
 # 서비스 상태 확인 API
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok"}
+    db = sql_status()
+    return {
+        "status": "ok",
+        "db": db,
+    }
 
 
 # CSV 분석 API

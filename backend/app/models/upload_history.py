@@ -1,7 +1,7 @@
 """
-SCR-INPUT-004 - upload_history 컨테이너 Pydantic 문서 모델
+SCR-INPUT-004 - upload_history Pydantic 문서 모델
 
-파티션 키: /upload_id
+저장소: Azure SQL Database (테이블 upload_history)
 
 상태 흐름 (현재 동기 구현):
     pending → processing → completed | failed
@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# Upload Status Enum
+
 class UploadStatus(str, Enum):
     PENDING = "pending"
     PROCESSING = "processing"
@@ -28,25 +28,22 @@ class UploadStatus(str, Enum):
     FAILED = "failed"
 
 
-# 현재 시간을 ISO-8601 UTC 타임스탬프로 반환
 def _now_iso() -> str:
-    """Cosmos 호환 ISO-8601 UTC 타임스탬프."""
+    """ISO-8601 UTC 타임스탬프."""
     return datetime.now(timezone.utc).isoformat()
 
-# Status Event Model
+
 class StatusEvent(BaseModel):
     status: UploadStatus
     at: str = Field(default_factory=_now_iso)
     message: Optional[str] = None
 
 
-# Validation Error Item Model
 class ValidationErrorItem(BaseModel):
     row_index: int
     errors: List[str]
 
 
-# Upload Summary Model
 class UploadSummary(BaseModel):
     """analysis_pipeline.analyze_csv_file() 결과의 summary 부분."""
 
@@ -57,12 +54,8 @@ class UploadSummary(BaseModel):
     avg_risk_score: float = 0.0
 
 
-# Upload History Document Model
 class UploadHistoryDoc(BaseModel):
-    """upload_history 컨테이너 1 row.
-
-    Cosmos 직렬화 시 dict 변환 필요: `doc.model_dump(mode='json')`.
-    """
+    """upload_history 테이블 1 row."""
 
     model_config = ConfigDict(use_enum_values=True)
 
@@ -90,7 +83,6 @@ class UploadHistoryDoc(BaseModel):
     completed_at: Optional[str] = None
     duration_ms: Optional[int] = None
 
-    # 상태 갱신 + status_history append
     def push_status(self, status: UploadStatus, message: Optional[str] = None) -> None:
         """상태 갱신 + status_history append."""
         self.status = status
