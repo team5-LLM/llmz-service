@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
 import { uploadCsv, getUploadHistory } from '../api'
 import type { UploadHistoryItem } from '../api/types'
+import KpiCard from '../components/common/KpiCard'
 
 type UploadState = 'idle' | 'processing' | 'success' | 'error'
 
 const statusStyle: Record<UploadHistoryItem['status'], { bg: string; color: string }> = {
-  '성공':   { bg: '#165EFF', color: '#FFFFFF' },
-  '처리중': { bg: '#FFB83E', color: '#FFFFFF' },
-  '실패':   { bg: '#F14E3C', color: '#FFFFFF' },
+  '성공':   { bg: 'var(--color-primary)', color: 'var(--color-white)' },
+  '처리중': { bg: '#FFB83E', color: 'var(--color-white)' },
+  '실패':   { bg: 'var(--color-secondary)', color: 'var(--color-white)' },
 }
 
 function mapStatus(apiStatus: string): UploadHistoryItem['status'] {
@@ -47,7 +48,6 @@ const DataManagement = () => {
         localIdCounter = mapped.length + 1
       })
       .catch(() => {
-        // Cosmos 미설정 시 빈 이력으로 시작
         setFiles([])
       })
   }, [])
@@ -120,28 +120,24 @@ const DataManagement = () => {
     if (uploadState === 'processing') {
       return (
         <>
-          <span className="material-symbols-outlined text-4xl animate-spin" style={{ color: '#165EFF' }}>
+          <span className="material-symbols-outlined text-4xl animate-spin text-primary">
             progress_activity
           </span>
-          <p className="text-sm font-medium" style={{ color: '#165EFF' }}>업로드 진행중...</p>
-          <p className="text-xs" style={{ color: '#888' }}>파일을 서버에 업로드하고 있습니다</p>
+          <p className="text-sm font-medium text-primary">업로드 진행중...</p>
+          <p className="text-xs" style={{ color: 'var(--color-gray-500)' }}>파일을 서버에 업로드하고 있습니다</p>
         </>
       )
     }
     if (uploadState === 'success') {
       return (
         <>
-          <p className="text-sm font-bold" style={{ color: '#165EFF' }}>분석 완료</p>
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center"
-            style={{ backgroundColor: '#165EFF' }}
-          >
+          <p className="text-sm font-bold text-primary">분석 완료</p>
+          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-primary">
             <span className="material-symbols-outlined text-xl text-white">check</span>
           </div>
-          <p className="text-xs" style={{ color: '#888' }}>대시보드가 성공적으로 업데이트 되었습니다.</p>
+          <p className="text-xs" style={{ color: 'var(--color-gray-500)' }}>대시보드가 성공적으로 업데이트 되었습니다.</p>
           <button
-            className="mt-2 px-4 py-1.5 rounded-md text-xs font-medium border"
-            style={{ color: '#165EFF', borderColor: '#165EFF' }}
+            className="mt-2 px-4 py-1.5 rounded-md text-xs font-medium border text-primary border-primary"
             onClick={(e) => { e.stopPropagation(); setUploadState('idle') }}
           >
             새 파일 업로드
@@ -152,14 +148,13 @@ const DataManagement = () => {
     if (uploadState === 'error') {
       return (
         <>
-          <span className="material-symbols-outlined text-4xl" style={{ color: '#F14E3C' }}>
+          <span className="material-symbols-outlined text-4xl text-secondary">
             error
           </span>
-          <p className="text-sm font-medium" style={{ color: '#F14E3C' }}>업로드 실패</p>
-          <p className="text-xs text-center" style={{ color: '#888' }}>{uploadErrorMsg}</p>
+          <p className="text-sm font-medium text-secondary">업로드 실패</p>
+          <p className="text-xs text-center" style={{ color: 'var(--color-gray-500)' }}>{uploadErrorMsg}</p>
           <button
-            className="mt-2 px-4 py-1.5 rounded-md text-sm font-medium"
-            style={{ backgroundColor: '#F8EAE7', color: '#F14E3C' }}
+            className="mt-2 px-4 py-1.5 rounded-md text-sm font-medium bg-secondary-light text-secondary"
             onClick={(e) => { e.stopPropagation(); setUploadState('idle') }}
           >
             다시 시도
@@ -169,16 +164,15 @@ const DataManagement = () => {
     }
     return (
       <>
-        <span className="material-symbols-outlined text-4xl" style={{ color: '#CCCCCC' }}>
+        <span className="material-symbols-outlined text-4xl text-gray-500">
           upload_file
         </span>
-        <p className="text-sm" style={{ color: '#888' }}>
+        <p className="text-sm" style={{ color: 'var(--color-gray-500)' }}>
           Drag &amp; Drop 또는 클릭하여 파일을 업로드하세요
         </p>
-        <p className="text-xs" style={{ color: '#aaa' }}>지원 형식: CSV</p>
+        <p className="text-xs" style={{ color: 'var(--color-gray-500)' }}>지원 형식: CSV</p>
         <button
-          className="mt-2 px-5 py-2 rounded-md text-sm font-medium text-white transition-opacity hover:opacity-90"
-          style={{ backgroundColor: '#165EFF' }}
+          className="mt-2 px-5 py-2 rounded-md text-sm font-medium text-white transition-opacity hover:opacity-90 bg-primary"
           onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click() }}
         >
           업로드
@@ -196,8 +190,8 @@ const DataManagement = () => {
         <div
           className="rounded-lg p-12 flex flex-col items-center justify-center gap-3 transition-colors"
           style={{
-            border: `2px dashed ${isDragging ? '#165EFF' : '#CCCCCC'}`,
-            backgroundColor: isDragging ? '#DFE7FF' : '#F5F6FA',
+            border: `2px dashed ${isDragging ? 'var(--color-primary)' : 'var(--color-gray-500)'}`,
+            backgroundColor: isDragging ? 'var(--color-primary-light)' : 'var(--color-bg)',
             cursor: uploadState === 'idle' ? 'pointer' : 'default',
             minHeight: '200px',
           }}
@@ -221,27 +215,11 @@ const DataManagement = () => {
       <div className="flex flex-col gap-4">
         <h2 className="font-bold text-xl text-black">데이터 입력 이력</h2>
 
-        {/* KPI 카드 4개 */}
         <div className="grid grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg p-5 border" style={{ borderColor: '#E0E0E0' }}>
-            <p className="text-xs mb-3" style={{ color: '#000000' }}>전체 수집 건수</p>
-            <p className="font-bold text-xxl text-black mb-1">{counts.total}건</p>
-            <p className="text-xs" style={{ color: '#000000' }}>csv {counts.total}건</p>
-          </div>
-          <div className="bg-white rounded-lg p-5 border" style={{ borderColor: '#E0E0E0' }}>
-            <p className="text-xs mb-3 font-medium" style={{ color: '#165EFF' }}>성공</p>
-            <p className="font-bold text-xxl text-black mb-1">{counts.success}건</p>
-            <p className="text-xs" style={{ color: '#165EFF' }}>분석 완료</p>
-          </div>
-          <div className="bg-white rounded-lg p-5 border" style={{ borderColor: '#E0E0E0' }}>
-            <p className="text-xs mb-3 font-medium" style={{ color: '#F14E3C' }}>실패</p>
-            <p className="font-bold text-xxl text-black mb-1">{counts.failure}건</p>
-            <p className="text-xs" style={{ color: '#F14E3C' }}>확인 필요</p>
-          </div>
-          <div className="bg-white rounded-lg p-5 border" style={{ borderColor: '#E0E0E0' }}>
-            <p className="text-xs mb-3 font-medium" style={{ color: '#FFB83E' }}>처리중</p>
-            <p className="font-bold text-xxl text-black mb-1">{counts.processing}건</p>
-          </div>
+          <KpiCard label="전체 수집 건수" value={`${counts.total}건`} />
+          <KpiCard label="성공" value={`${counts.success}건`} />
+          <KpiCard label="실패" value={`${counts.failure}건`} />
+          <KpiCard label="처리중" value={`${counts.processing}건`} />
         </div>
 
         {/* 수집 이력 목록 */}
@@ -250,11 +228,8 @@ const DataManagement = () => {
 
           {/* 필터 행 */}
           <div className="flex gap-3 mb-5">
-            <div
-              className="flex items-center gap-2 px-4 py-2 rounded-full flex-1 max-w-xs"
-              style={{ backgroundColor: '#F5F6FA', border: '1px solid #E0E0E0' }}
-            >
-              <span className="material-symbols-outlined text-base" style={{ color: '#888' }}>search</span>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full flex-1 max-w-xs bg-bg border border-gray-100">
+              <span className="material-symbols-outlined text-base" style={{ color: 'var(--color-gray-500)' }}>search</span>
               <input
                 type="text"
                 placeholder="파일명 검색"
@@ -263,11 +238,8 @@ const DataManagement = () => {
                 className="bg-transparent text-sm outline-none w-full"
               />
             </div>
-            <div
-              className="flex items-center gap-2 px-4 py-2 rounded-full"
-              style={{ backgroundColor: '#F5F6FA', border: '1px solid #E0E0E0' }}
-            >
-              <span className="material-symbols-outlined text-base" style={{ color: '#888' }}>filter_list</span>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-bg border border-gray-100">
+              <span className="material-symbols-outlined text-base" style={{ color: 'var(--color-gray-500)' }}>filter_list</span>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
@@ -279,11 +251,8 @@ const DataManagement = () => {
                 <option value="처리중">처리중</option>
               </select>
             </div>
-            <div
-              className="flex items-center gap-2 px-4 py-2 rounded-full"
-              style={{ backgroundColor: '#F5F6FA', border: '1px solid #E0E0E0' }}
-            >
-              <span className="material-symbols-outlined text-base" style={{ color: '#888' }}>person</span>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-bg border border-gray-100">
+              <span className="material-symbols-outlined text-base" style={{ color: 'var(--color-gray-500)' }}>person</span>
               <input
                 type="text"
                 placeholder="업로더"
@@ -297,9 +266,9 @@ const DataManagement = () => {
           {/* 테이블 */}
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ borderBottom: '1px solid #E0E0E0' }}>
+              <tr className="border-b border-gray-100">
                 {['유형', '파일명', '수집일시', '업로더', '처리상태', '비고'].map((h) => (
-                  <th key={h} className="py-2 pr-4 text-left font-medium text-xs" style={{ color: '#888' }}>
+                  <th key={h} className="py-2 pr-4 text-left font-medium text-xs" style={{ color: 'var(--color-gray-500)' }}>
                     {h}
                   </th>
                 ))}
@@ -309,17 +278,14 @@ const DataManagement = () => {
               {filtered.map((file) => {
                 const s = statusStyle[file.status]
                 return (
-                  <tr key={file.id} style={{ borderBottom: '1px solid #F5F6FA' }}>
+                  <tr key={file.id} className="border-b border-bg">
                     <td className="py-3 pr-4">
-                      <span
-                        className="px-2 py-0.5 rounded text-xs font-medium"
-                        style={{ backgroundColor: '#DFE7FF', color: '#165EFF' }}
-                      >
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary-light text-primary">
                         {getFileExt(file.name)}
                       </span>
                     </td>
                     <td className="py-3 pr-4 text-sm text-black">{file.name}</td>
-                    <td className="py-3 pr-4 text-sm" style={{ color: '#888' }}>{file.date}</td>
+                    <td className="py-3 pr-4 text-sm" style={{ color: 'var(--color-gray-500)' }}>{file.date}</td>
                     <td className="py-3 pr-4 text-sm text-black">{file.uploader}</td>
                     <td className="py-3 pr-4">
                       <span
@@ -329,7 +295,7 @@ const DataManagement = () => {
                         {file.status}
                       </span>
                     </td>
-                    <td className="py-3 text-sm" style={{ color: '#aaa' }}>
+                    <td className="py-3 text-sm" style={{ color: 'var(--color-gray-500)' }}>
                       {file.status === '성공' ? '—' : ''}
                     </td>
                   </tr>
@@ -337,7 +303,7 @@ const DataManagement = () => {
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-sm" style={{ color: '#aaa' }}>
+                  <td colSpan={6} className="py-8 text-center text-sm" style={{ color: 'var(--color-gray-500)' }}>
                     {files.length === 0 ? '업로드 이력이 없습니다.' : '검색 결과가 없습니다.'}
                   </td>
                 </tr>
