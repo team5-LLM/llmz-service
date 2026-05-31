@@ -21,7 +21,6 @@ from app.schemas.upload_history import (
     UploadHistoryListResponse,
 )
 
-# Code A에서 추가된 신규 API용 import
 from app.schemas.log_schema import MaskingRuleCreate, MaskingRuleUpdate
 from app.services.admin_rules import list_rules, create_rule, update_rule, delete_rule
 from app.services.embedding_access import get_embedding_access_policy
@@ -63,7 +62,6 @@ SAMPLE_CSV_PATH = PROJECT_ROOT / "data-sample" / "sample_llm_logs.csv"
 def _analyze_sample_or_404() -> dict:
     """
     샘플 CSV 기반 조회 API에서 반복되는 파일 확인/분석 로직.
-    Code A의 helper 구조를 Code B에 병합했습니다.
     """
     if not SAMPLE_CSV_PATH.exists():
         raise HTTPException(
