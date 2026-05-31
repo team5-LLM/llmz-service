@@ -1,19 +1,51 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pathlib import Path
+import logging
+import time
 import tempfile
+from contextlib import asynccontextmanager
+from pathlib import Path
 
-from app.schemas.log_schema import MaskingRuleCreate, MaskingRuleUpdate
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.db.blob import delete_blob, is_storage_configured, storage_status, upload_csv_bytes
+from app.db.sql import init_db, is_sql_configured, sql_status
+from app.models.upload_history import ValidationErrorItem
+from app.services import upload_history_service as history_svc
 from app.services.analysis_pipeline import analyze_csv_file
-from app.services.csv_loader import inspect_csv
+from app.services.csv_loader import CsvValidationError
+from app.services.persistence_service import persist_analysis_result
 from app.services.recommender import build_recommendation_detail
+from app.schemas.upload_history import (
+    UploadHistoryDetailResponse,
+    UploadHistoryItem,
+    UploadHistoryListResponse,
+)
+
+# Code A에서 추가된 신규 API용 import
+from app.schemas.log_schema import MaskingRuleCreate, MaskingRuleUpdate
 from app.services.admin_rules import list_rules, create_rule, update_rule, delete_rule
 from app.services.embedding_access import get_embedding_access_policy
 
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if is_sql_configured():
+        if init_db():
+            logger.info("Azure SQL 초기화 완료")
+        else:
+            logger.warning(
+                "Azure SQL 초기화 실패 — 분석 API는 동작하지만 upload_history 저장은 skip 됩니다."
+            )
+    yield
+
+
 app = FastAPI(
-    title="LLMZ Target Feature API",
-    description="요청된 ID 기능만 포함한 CSV 기반 LLM 사용 로그 분석 백엔드",
-    version="1.0.0",
+    title="LLM Automation Opportunity API",
+    description="CSV 기반 부서별 LLM 사용 패턴 분석 및 AI 업무 자동화 추천 API",
+    version="0.5.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -29,67 +61,223 @@ SAMPLE_CSV_PATH = PROJECT_ROOT / "data-sample" / "sample_llm_logs.csv"
 
 
 def _analyze_sample_or_404() -> dict:
+    """
+    샘플 CSV 기반 조회 API에서 반복되는 파일 확인/분석 로직.
+    Code A의 helper 구조를 Code B에 병합했습니다.
+    """
     if not SAMPLE_CSV_PATH.exists():
-        raise HTTPException(status_code=404, detail=f"샘플 CSV를 찾을 수 없습니다: {SAMPLE_CSV_PATH}")
-
-    inspection = inspect_csv(SAMPLE_CSV_PATH)
-    if not inspection["valid"]:
-        raise HTTPException(status_code=400, detail=inspection)
+        raise HTTPException(
+            status_code=404,
+            detail=f"샘플 CSV를 찾을 수 없습니다: {SAMPLE_CSV_PATH}",
+        )
 
     return analyze_csv_file(SAMPLE_CSV_PATH)
 
 
 @app.get("/")
 def root():
-    return {"service": "LLMZ Target Feature API", "status": "running", "docs": "/docs"}
+    return {
+        "service": "LLM Automation Opportunity API",
+        "status": "running",
+        "docs": "/docs",
+    }
 
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok"}
+    db = sql_status()
+    storage = storage_status()
+    return {
+        "status": "ok",
+        "db": db,
+        "storage": storage,
+    }
 
 
 @app.get("/api/analyze-sample")
 def analyze_sample():
-    """
-    샘플 CSV 분석용 유지 API.
-    """
     return _analyze_sample_or_404()
 
 
 @app.post("/api/upload")
 async def upload_csv(file: UploadFile = File(...)):
-    """
-    SCR-INPUT-001 CSV 로그 업로드.
-    CSV 파일을 업로드하면 유효성 검증 후 분석 결과를 반환합니다.
+    """실행 흐름:
+        1) upload_history INSERT (status=pending)
+        2) Blob 임시 업로드 (설정 시) → blob_path 기록
+        3) tempfile 저장 → analyze_csv_file → 결과 산출
+        4) 분석 후 Blob 삭제 → blob_purged_at 기록 (Lifecycle 7일은 백업)
+        5) persist_analysis_result → Azure SQL (department_stats, recommendations, prompt_logs)
+        6) 성공/실패 upload_history UPDATE
+        7) 응답에 upload_id 포함 → FE 가 SCR-INPUT-004 화면에서 추적 가능
     """
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="CSV 파일만 업로드할 수 있습니다.")
 
-    content = await file.read()
+    history_doc = history_svc.create_upload(
+        filename=file.filename,
+        uploaded_by="anonymous",
+    )
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-
+    started = time.monotonic()
+    blob_name: str | None = None
     try:
-        inspection = inspect_csv(tmp_path)
-        if not inspection["valid"]:
-            return inspection
+        history_svc.mark_processing(history_doc)
 
-        return analyze_csv_file(tmp_path)
-    finally:
+        content = await file.read()
+
+        if is_storage_configured():
+            try:
+                blob_path, blob_name = upload_csv_bytes(
+                    upload_id=history_doc.upload_id,
+                    filename=file.filename,
+                    data=content,
+                )
+                history_svc.record_blob_path(history_doc, blob_path)
+            except Exception as exc:
+                logger.warning(
+                    "Blob 업로드 실패 — 로컬 tempfile 분석만 진행 (upload_id=%s): %s",
+                    history_doc.upload_id,
+                    exc,
+                )
+                blob_name = None
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+
         try:
-            tmp_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+            result = analyze_csv_file(tmp_path)
+        except CsvValidationError as exc:
+            errors = [
+                ValidationErrorItem(row_index=exc.row_index, errors=exc.errors)
+            ]
+            history_svc.mark_validation_failed(
+                history_doc,
+                errors=errors,
+                error_message=str(exc),
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": str(exc),
+                    "validation_errors": [
+                        item.model_dump(mode="json") for item in errors
+                    ],
+                },
+            )
+        finally:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        duration_ms = int((time.monotonic() - started) * 1000)
+        summary = result.get("summary", {})
+        total_rows = int(summary.get("total_logs", 0))
+
+        history_svc.mark_completed(
+            history_doc,
+            summary=summary,
+            total_rows=total_rows,
+            valid_rows=total_rows,
+            invalid_rows=0,
+            duration_ms=duration_ms,
+        )
+
+        persist_analysis_result(history_doc.upload_id, result)
+
+        response = {k: v for k, v in result.items() if k != "masked_logs"}
+        return {
+            "upload_id": history_doc.upload_id,
+            "status": history_doc.status,
+            **response,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        history_svc.mark_failed(history_doc, error_message=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=f"분석 처리 중 오류가 발생했습니다: {exc}",
+        )
+    finally:
+        if blob_name and is_storage_configured():
+            try:
+                delete_blob(blob_name)
+                history_svc.record_blob_purged(history_doc)
+            except Exception as exc:
+                logger.warning(
+                    "Blob 삭제 실패 — Portal Lifecycle(7일)이 정리합니다 (upload_id=%s): %s",
+                    history_doc.upload_id,
+                    exc,
+                )
+
+
+@app.get("/api/uploads/history", response_model=UploadHistoryListResponse)
+def list_upload_history(
+    limit: int = Query(default=50, ge=1, le=200),
+    skip: int = Query(default=0, ge=0),
+):
+    """SCR-INPUT-004 — 데이터 입력 이력 목록 조회."""
+    docs = history_svc.list_uploads(limit=limit, skip=skip)
+    total = history_svc.count_uploads()
+
+    items = [
+        UploadHistoryItem(
+            upload_id=doc.upload_id,
+            filename=doc.filename,
+            uploaded_at=doc.uploaded_at,
+            uploaded_by=doc.uploaded_by,
+            status=str(doc.status),
+            total_rows=doc.total_rows,
+            valid_rows=doc.valid_rows,
+            invalid_rows=doc.invalid_rows,
+            duration_ms=doc.duration_ms,
+            completed_at=doc.completed_at,
+            error_message=doc.error_message,
+            summary=doc.summary,
+        )
+        for doc in docs
+    ]
+
+    return UploadHistoryListResponse(items=items, total=total, limit=limit, skip=skip)
+
+
+@app.get("/api/uploads/{upload_id}", response_model=UploadHistoryDetailResponse)
+def get_upload_history_detail(upload_id: str):
+    """SCR-INPUT-004 — 단일 업로드 상태 변경 이력 포함 상세."""
+    doc = history_svc.get_upload(upload_id)
+    if doc is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"업로드 이력을 찾을 수 없습니다: {upload_id}",
+        )
+
+    return UploadHistoryDetailResponse(
+        upload_id=doc.upload_id,
+        filename=doc.filename,
+        uploaded_at=doc.uploaded_at,
+        uploaded_by=doc.uploaded_by,
+        department_scope=doc.department_scope,
+        total_rows=doc.total_rows,
+        valid_rows=doc.valid_rows,
+        invalid_rows=doc.invalid_rows,
+        status=str(doc.status),
+        status_history=doc.status_history,
+        duration_ms=doc.duration_ms,
+        completed_at=doc.completed_at,
+        error_message=doc.error_message,
+        summary=doc.summary,
+        blob_path=doc.blob_path,
+        blob_purged_at=doc.blob_purged_at,
+        validation_errors=doc.validation_errors,
+    )
 
 
 @app.get("/api/recommendations")
 def get_recommendations():
-    """
-    SCR-RECO-001 AI 자동화 후보 카드 리스트.
-    """
+    """전체 자동화 추천 카드 목록 조회."""
     result = _analyze_sample_or_404()
     return {
         "count": len(result["recommendations"]),
@@ -99,20 +287,23 @@ def get_recommendations():
 
 @app.get("/api/recommendations/{department}")
 def get_recommendations_by_department(department: str):
-    """
-    부서별 추천 후보 리스트 조회.
-    SCR-RECO-001을 부서 기준으로 필터링합니다.
-    """
+    """특정 부서의 자동화 추천 카드 목록 조회."""
     result = _analyze_sample_or_404()
-    items = [item for item in result["recommendations"] if item["department"] == department]
-    return {"department": department, "count": len(items), "recommendations": items}
+    items = [
+        item for item in result["recommendations"]
+        if item["department"] == department
+    ]
+
+    return {
+        "department": department,
+        "count": len(items),
+        "recommendations": items,
+    }
 
 
 @app.get("/api/recommendations/{department}/{task_label}")
 def get_recommendation_detail(department: str, task_label: str):
-    """
-    SCR-RECO-002 추천 상세 보기.
-    """
+    """SCR-RECO-002 추천 상세 보기 API."""
     result = _analyze_sample_or_404()
 
     target = None
@@ -122,17 +313,19 @@ def get_recommendation_detail(department: str, task_label: str):
             break
 
     if target is None:
-        raise HTTPException(status_code=404, detail=f"{department} - {task_label} 추천 정보를 찾을 수 없습니다.")
+        raise HTTPException(
+            status_code=404,
+            detail=f"{department} - {task_label} 추천 정보를 찾을 수 없습니다.",
+        )
 
     return build_recommendation_detail(target)
 
 
 @app.get("/api/recommendations/{department}/{task_label}/decision")
 def get_risk_based_decision(department: str, task_label: str):
-    """
-    SCR-RECO-004 Risk 기반 도입 판단.
-    """
+    """SCR-RECO-004 Risk 기반 도입 판단 API."""
     detail = get_recommendation_detail(department, task_label)
+
     return {
         "department": detail["department"],
         "task_label": detail["task_label"],
@@ -151,6 +344,8 @@ def get_risk_based_decision(department: str, task_label: str):
 def embedding_access_policy():
     """
     FUNC-PROC-011 Embedding 접근 통제.
+    원문 prompt_text를 embedding 대상으로 사용하지 않고,
+    masked_prompt만 사용한다는 정책을 반환합니다.
     """
     return get_embedding_access_policy()
 

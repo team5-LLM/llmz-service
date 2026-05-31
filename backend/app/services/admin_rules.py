@@ -3,7 +3,8 @@ from __future__ import annotations
 from uuid import uuid4
 
 # SCR-ADMIN-001 마스킹 규칙 관리
-# MVP에서는 인메모리 저장소를 사용합니다. 서버 재시작 시 초기화됩니다.
+# MVP/P1 단계에서는 인메모리 저장소를 사용합니다.
+# 서버 재시작 시 추가/수정/삭제된 규칙은 초기화됩니다.
 MASKING_RULES: list[dict] = [
     {
         "rule_id": "rule-email",
