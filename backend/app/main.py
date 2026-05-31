@@ -1,15 +1,47 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pathlib import Path
+import logging
+import time
 import tempfile
+from contextlib import asynccontextmanager
+from pathlib import Path
 
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.db.blob import delete_blob, is_storage_configured, storage_status, upload_csv_bytes
+from app.db.sql import init_db, is_sql_configured, sql_status
+from app.models.upload_history import ValidationErrorItem
+from app.services import upload_history_service as history_svc
 from app.services.analysis_pipeline import analyze_csv_file
+from app.services.csv_loader import CsvValidationError
+from app.services.persistence_service import persist_analysis_result
 from app.services.recommender import build_recommendation_detail
+from app.schemas.upload_history import (
+    UploadHistoryDetailResponse,
+    UploadHistoryItem,
+    UploadHistoryListResponse,
+)
 
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if is_sql_configured():
+        if init_db():
+            logger.info("Azure SQL 초기화 완료")
+        else:
+            logger.warning(
+                "Azure SQL 초기화 실패 — 분석 API는 동작하지만 upload_history 저장은 skip 됩니다."
+            )
+    yield
+
+
+# FastAPI 애플리케이션 설정
 app = FastAPI(
     title="LLM Automation Opportunity API",
     description="CSV 기반 부서별 LLM 사용 패턴 분석 및 AI 업무 자동화 추천 API",
-    version="0.2.0",
+    version="0.4.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -23,7 +55,7 @@ app.add_middleware(
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_CSV_PATH = PROJECT_ROOT / "data-sample" / "sample_llm_logs.csv"
 
-
+# 루트 API
 @app.get("/")
 def root():
     return {
@@ -33,11 +65,19 @@ def root():
     }
 
 
+# 서비스 상태 확인 API
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok"}
+    db = sql_status()
+    storage = storage_status()
+    return {
+        "status": "ok",
+        "db": db,
+        "storage": storage,
+    }
 
 
+# CSV 분석 API
 @app.get("/api/analyze-sample")
 def analyze_sample():
     if not SAMPLE_CSV_PATH.exists():
@@ -49,28 +89,190 @@ def analyze_sample():
     return analyze_csv_file(SAMPLE_CSV_PATH)
 
 
+# CSV 업로드 API
 @app.post("/api/upload")
 async def upload_csv(file: UploadFile = File(...)):
+    """실행 흐름:
+        1) upload_history INSERT (status=pending)
+        2) Blob 임시 업로드 (설정 시) → blob_path 기록
+        3) tempfile 저장 → analyze_csv_file → 결과 산출
+        4) 분석 후 Blob 삭제 → blob_purged_at 기록 (Lifecycle 7일은 백업)
+        5) persist_analysis_result → Azure SQL (department_stats, recommendations, prompt_logs)
+        6) 성공/실패 upload_history UPDATE
+        7) 응답에 upload_id 포함 → FE 가 SCR-INPUT-004 화면에서 추적 가능
+    """
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="CSV 파일만 업로드할 수 있습니다.")
 
-    content = await file.read()
+    history_doc = history_svc.create_upload(
+        filename=file.filename,
+        uploaded_by="anonymous",
+    )
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
-        tmp.write(content)
-        tmp_path = Path(tmp.name)
-
+    started = time.monotonic()
+    blob_name: str | None = None
     try:
-        result = analyze_csv_file(tmp_path)
-    finally:
+        history_svc.mark_processing(history_doc)
+
+        content = await file.read()
+
+        if is_storage_configured():
+            try:
+                blob_path, blob_name = upload_csv_bytes(
+                    upload_id=history_doc.upload_id,
+                    filename=file.filename,
+                    data=content,
+                )
+                history_svc.record_blob_path(history_doc, blob_path)
+            except Exception as exc:
+                logger.warning(
+                    "Blob 업로드 실패 — 로컬 tempfile 분석만 진행 (upload_id=%s): %s",
+                    history_doc.upload_id,
+                    exc,
+                )
+                blob_name = None
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+
         try:
-            tmp_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+            result = analyze_csv_file(tmp_path)
+        except CsvValidationError as exc:
+            errors = [
+                ValidationErrorItem(row_index=exc.row_index, errors=exc.errors)
+            ]
+            history_svc.mark_validation_failed(
+                history_doc,
+                errors=errors,
+                error_message=str(exc),
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": str(exc),
+                    "validation_errors": [
+                        item.model_dump(mode="json") for item in errors
+                    ],
+                },
+            )
+        finally:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
-    return result
+        duration_ms = int((time.monotonic() - started) * 1000)
+        summary = result.get("summary", {})
+        total_rows = int(summary.get("total_logs", 0))
+
+        history_svc.mark_completed(
+            history_doc,
+            summary=summary,
+            total_rows=total_rows,
+            valid_rows=total_rows,
+            invalid_rows=0,
+            duration_ms=duration_ms,
+        )
+
+        persist_analysis_result(history_doc.upload_id, result)
+
+        response = {k: v for k, v in result.items() if k != "masked_logs"}
+        return {
+            "upload_id": history_doc.upload_id,
+            "status": history_doc.status,
+            **response,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        history_svc.mark_failed(history_doc, error_message=str(exc))
+        raise HTTPException(
+            status_code=500,
+            detail=f"분석 처리 중 오류가 발생했습니다: {exc}",
+        )
+    finally:
+        if blob_name and is_storage_configured():
+            try:
+                delete_blob(blob_name)
+                history_svc.record_blob_purged(history_doc)
+            except Exception as exc:
+                logger.warning(
+                    "Blob 삭제 실패 — Portal Lifecycle(7일)이 정리합니다 (upload_id=%s): %s",
+                    history_doc.upload_id,
+                    exc,
+                )
 
 
+# 업로드 이력 목록 조회 API
+@app.get("/api/uploads/history", response_model=UploadHistoryListResponse)
+def list_upload_history(
+    limit: int = Query(default=50, ge=1, le=200),
+    skip: int = Query(default=0, ge=0),
+):
+    """SCR-INPUT-004 — 데이터 입력 이력 목록 조회 (성공/실패/대기 포함).
+
+    - 최신 업로드부터 정렬
+    - limit/skip 페이징 (기본 50건)
+    """
+    docs = history_svc.list_uploads(limit=limit, skip=skip)
+    total = history_svc.count_uploads()
+
+    items = [
+        UploadHistoryItem(
+            upload_id=doc.upload_id,
+            filename=doc.filename,
+            uploaded_at=doc.uploaded_at,
+            uploaded_by=doc.uploaded_by,
+            status=str(doc.status),
+            total_rows=doc.total_rows,
+            valid_rows=doc.valid_rows,
+            invalid_rows=doc.invalid_rows,
+            duration_ms=doc.duration_ms,
+            completed_at=doc.completed_at,
+            error_message=doc.error_message,
+            summary=doc.summary,
+        )
+        for doc in docs
+    ]
+
+    return UploadHistoryListResponse(items=items, total=total, limit=limit, skip=skip)
+
+
+# 업로드 이력 상세 보기 API
+@app.get("/api/uploads/{upload_id}", response_model=UploadHistoryDetailResponse)
+def get_upload_history_detail(upload_id: str):
+    """SCR-INPUT-004 — 단일 업로드 상태 변경 이력(status_history) 포함 상세."""
+    doc = history_svc.get_upload(upload_id)
+    if doc is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"업로드 이력을 찾을 수 없습니다: {upload_id}",
+        )
+
+    return UploadHistoryDetailResponse(
+        upload_id=doc.upload_id,
+        filename=doc.filename,
+        uploaded_at=doc.uploaded_at,
+        uploaded_by=doc.uploaded_by,
+        department_scope=doc.department_scope,
+        total_rows=doc.total_rows,
+        valid_rows=doc.valid_rows,
+        invalid_rows=doc.invalid_rows,
+        status=str(doc.status),
+        status_history=doc.status_history,
+        duration_ms=doc.duration_ms,
+        completed_at=doc.completed_at,
+        error_message=doc.error_message,
+        summary=doc.summary,
+        blob_path=doc.blob_path,
+        blob_purged_at=doc.blob_purged_at,
+        validation_errors=doc.validation_errors,
+    )
+
+
+# Recommendations API
 @app.get("/api/recommendations")
 def get_recommendations():
     """전체 자동화 추천 카드 목록 조회."""
@@ -86,7 +288,7 @@ def get_recommendations():
         "recommendations": result["recommendations"],
     }
 
-
+# 자동화 추천 카드 목록 조회 API
 @app.get("/api/recommendations/{department}")
 def get_recommendations_by_department(department: str):
     """특정 부서의 자동화 추천 카드 목록 조회."""
@@ -109,6 +311,7 @@ def get_recommendations_by_department(department: str):
     }
 
 
+# 자동화 추천 카드 상세 보기 API
 @app.get("/api/recommendations/{department}/{task_label}")
 def get_recommendation_detail(department: str, task_label: str):
     """SCR-RECO-002 추천 상세 보기 API."""
@@ -135,6 +338,7 @@ def get_recommendation_detail(department: str, task_label: str):
     return build_recommendation_detail(target)
 
 
+# Risk 기반 도입 판단 API
 @app.get("/api/recommendations/{department}/{task_label}/decision")
 def get_risk_based_decision(department: str, task_label: str):
     """SCR-RECO-004 Risk 기반 도입 판단 API."""
