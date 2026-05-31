@@ -17,7 +17,12 @@ KEYWORDS = {
     "단순 검색/질문형": ["개념", "차이", "설명", "체크리스트", "주의할 점", "의미", "예시", "비교"],
 }
 
+
 def classify_task(prompt: str) -> str:
+    """
+    마스킹된 프롬프트 기반 업무유형 분류.
+    MVP에서는 키워드 기반으로 구현합니다.
+    """
     text = (prompt or "").lower()
     scores = {}
     for label, keywords in KEYWORDS.items():

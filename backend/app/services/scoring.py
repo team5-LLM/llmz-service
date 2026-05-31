@@ -6,6 +6,7 @@ def normalize(value: float, max_value: float) -> float:
 
 def calculate_risk_score(flags: dict) -> int:
     """
+    FUNC-PROC-006 Risk Score 계산.
     Risk Score =
     개인정보 30% + 기밀정보 25% + 고객정보 20% + 재무/법무 15% + 원문 노출 가능성 10%
     """
@@ -42,11 +43,11 @@ def calculate_opportunity_score(
     user_score: float,
 ) -> int:
     """
+    FUNC-PROC-007 Opportunity Score 계산.
+    구현 난이도 역점수는 제외합니다.
+
     Opportunity Score =
     사용빈도 35% + 반복성 30% + 비용 영향 20% + 사용자 수 15%
-
-    구현 난이도 역점수는 제외한다.
-    모든 입력 점수는 0~100 기준이다.
     """
     score = (
         frequency_ratio * 0.35
@@ -58,7 +59,9 @@ def calculate_opportunity_score(
 
 
 def adoption_decision(opportunity_score: int, risk_score_value: float) -> dict:
-    """SCR-RECO-004 Risk 기반 도입 판단 로직."""
+    """
+    SCR-RECO-004 Risk 기반 도입 판단.
+    """
     if opportunity_score >= 70 and risk_score_value <= 30:
         return {
             "decision": "우선 추진",

@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+
 from app.services.analysis_pipeline import analyze_csv_file
 
 ROOT = Path(__file__).resolve().parents[1]
