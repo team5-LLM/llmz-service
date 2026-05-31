@@ -66,6 +66,7 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
         "department_stats": build_department_stats(adf),
         "recommendations": build_recommendations(adf),
         "sample_masked_logs": adf.head(20).to_dict(orient="records"),
+        "masked_logs": adf.to_dict(orient="records"),
     }
 
 
