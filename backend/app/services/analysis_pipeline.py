@@ -130,7 +130,6 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
             repeat_score=normalize(task_count, max_count),
             cost_score=normalize(total_cost, max_cost),
             user_score=normalize(unique_users, max_users),
-            difficulty=auto_info["difficulty"],
         )
 
         # SCR-RECO-004 Risk 기반 도입 판단

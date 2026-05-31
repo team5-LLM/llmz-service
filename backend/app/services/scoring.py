@@ -35,28 +35,24 @@ def risk_level(score: float) -> str:
     return "Critical"
 
 
-def difficulty_inverse_score(difficulty: str) -> int:
-    return {
-        "하": 100,
-        "중": 70,
-        "중상": 45,
-        "상": 25,
-    }.get(difficulty, 50)
-
-
 def calculate_opportunity_score(
     frequency_ratio: float,
     repeat_score: float,
     cost_score: float,
     user_score: float,
-    difficulty: str,
 ) -> int:
+    """
+    Opportunity Score =
+    사용빈도 35% + 반복성 30% + 비용 영향 20% + 사용자 수 15%
+
+    구현 난이도 역점수는 제외한다.
+    모든 입력 점수는 0~100 기준이다.
+    """
     score = (
-        frequency_ratio * 0.30
-        + repeat_score * 0.25
+        frequency_ratio * 0.35
+        + repeat_score * 0.30
         + cost_score * 0.20
         + user_score * 0.15
-        + difficulty_inverse_score(difficulty) * 0.10
     )
     return int(round(score))
 
