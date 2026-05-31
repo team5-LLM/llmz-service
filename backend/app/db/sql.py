@@ -124,6 +124,11 @@ def init_db() -> bool:
         return False
 
     try:
+        from app.models.analysis_result_tables import (  # noqa: F401
+            DepartmentStatRow,
+            PromptLogRow,
+            RecommendationRow,
+        )
         from app.models.upload_history_table import UploadHistoryRow  # noqa: F401
 
         _ping_database()

@@ -9,8 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.blob import delete_blob, is_storage_configured, storage_status, upload_csv_bytes
 from app.db.sql import init_db, is_sql_configured, sql_status
+from app.models.upload_history import ValidationErrorItem
 from app.services import upload_history_service as history_svc
 from app.services.analysis_pipeline import analyze_csv_file
+from app.services.csv_loader import CsvValidationError
+from app.services.persistence_service import persist_analysis_result
 from app.services.recommender import build_recommendation_detail
 from app.schemas.upload_history import (
     UploadHistoryDetailResponse,
@@ -94,8 +97,9 @@ async def upload_csv(file: UploadFile = File(...)):
         2) Blob 임시 업로드 (설정 시) → blob_path 기록
         3) tempfile 저장 → analyze_csv_file → 결과 산출
         4) 분석 후 Blob 삭제 → blob_purged_at 기록 (Lifecycle 7일은 백업)
-        5) 성공/실패 upload_history UPDATE
-        6) 응답에 upload_id 포함 → FE 가 SCR-INPUT-004 화면에서 추적 가능
+        5) persist_analysis_result → Azure SQL (department_stats, recommendations, prompt_logs)
+        6) 성공/실패 upload_history UPDATE
+        7) 응답에 upload_id 포함 → FE 가 SCR-INPUT-004 화면에서 추적 가능
     """
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="CSV 파일만 업로드할 수 있습니다.")
@@ -134,6 +138,24 @@ async def upload_csv(file: UploadFile = File(...)):
 
         try:
             result = analyze_csv_file(tmp_path)
+        except CsvValidationError as exc:
+            errors = [
+                ValidationErrorItem(row_index=exc.row_index, errors=exc.errors)
+            ]
+            history_svc.mark_validation_failed(
+                history_doc,
+                errors=errors,
+                error_message=str(exc),
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": str(exc),
+                    "validation_errors": [
+                        item.model_dump(mode="json") for item in errors
+                    ],
+                },
+            )
         finally:
             try:
                 tmp_path.unlink(missing_ok=True)
@@ -153,14 +175,16 @@ async def upload_csv(file: UploadFile = File(...)):
             duration_ms=duration_ms,
         )
 
+        persist_analysis_result(history_doc.upload_id, result)
+
+        response = {k: v for k, v in result.items() if k != "masked_logs"}
         return {
             "upload_id": history_doc.upload_id,
             "status": history_doc.status,
-            **result,
+            **response,
         }
 
     except HTTPException:
-        history_svc.mark_failed(history_doc, error_message="HTTP 검증 실패")
         raise
     except Exception as exc:
         history_svc.mark_failed(history_doc, error_message=str(exc))
@@ -244,6 +268,7 @@ def get_upload_history_detail(upload_id: str):
         summary=doc.summary,
         blob_path=doc.blob_path,
         blob_purged_at=doc.blob_purged_at,
+        validation_errors=doc.validation_errors,
     )
 
 

@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
-from app.models.upload_history import StatusEvent, UploadSummary
+from app.models.upload_history import StatusEvent, UploadSummary, ValidationErrorItem
 
 
 # Upload History Item Model
@@ -60,3 +60,4 @@ class UploadHistoryDetailResponse(BaseModel):
     summary: Optional[UploadSummary] = None
     blob_path: Optional[str] = None
     blob_purged_at: Optional[str] = None
+    validation_errors: List[ValidationErrorItem] = []

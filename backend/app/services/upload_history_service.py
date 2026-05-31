@@ -202,7 +202,24 @@ def attach_validation_errors(
     _upsert(doc)
     return doc
 
-# 업로드 이력 페이징 조회   
+
+def mark_validation_failed(
+    doc: UploadHistoryDoc,
+    *,
+    errors: List[ValidationErrorItem],
+    error_message: str,
+) -> UploadHistoryDoc:
+    """스키마 검증 실패 — validation_errors + status=failed."""
+    doc.validation_errors = errors
+    doc.invalid_rows = len(errors)
+    doc.error_message = error_message
+    doc.completed_at = _now_iso()
+    doc.push_status(UploadStatus.FAILED, message=error_message[:200])
+    _upsert(doc)
+    return doc
+
+
+# 업로드 이력 페이징 조회
 def list_uploads(*, limit: int = 50, skip: int = 0) -> List[UploadHistoryDoc]:
     """이력 페이징 조회. 최신 업로드부터 정렬"""
     session = safe_session()
