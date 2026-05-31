@@ -4,6 +4,7 @@
 @layer base {
   body {
     font-family: "Pretendard Variable", sans-serif;
+    font-weight: 500; /* medium */
     letter-spacing: -0.02em; /* 자간 */
   }
 }
