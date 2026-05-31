@@ -1,24 +1,6 @@
+# 아래 스키마가 기존 app/schemas/log_schema.py에 없다면 추가하세요.
 from typing import Optional
 from pydantic import BaseModel, Field
-
-REQUIRED_COLUMNS = [
-    "log_id",
-    "department",
-    "user_hash",
-    "prompt_text",
-    "model",
-    "input_tokens",
-    "output_tokens",
-    "total_tokens",
-    "cost",
-    "created_at",
-]
-
-
-def validate_columns(columns: list[str]) -> tuple[bool, list[str]]:
-    """CSV 필수 컬럼 검증."""
-    missing = [col for col in REQUIRED_COLUMNS if col not in columns]
-    return len(missing) == 0, missing
 
 
 class MaskingRuleCreate(BaseModel):

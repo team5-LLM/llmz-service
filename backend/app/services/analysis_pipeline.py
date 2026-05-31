@@ -18,6 +18,9 @@ from app.services.recommender import (
 
 
 def analyze_csv_file(csv_path: str | Path) -> dict:
+    """
+    CSV 기반 전체 분석 파이프라인.
+    """
     df = load_and_validate_csv(csv_path)
 
     analyzed_rows = []
@@ -38,8 +41,6 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
             "total_tokens": float(row["total_tokens"]),
             "cost": float(row["cost"]),
             "created_at": str(row["created_at"]),
-
-            # 원문은 저장하지 않고 마스킹 결과만 저장합니다.
             "masked_prompt": masking_result.masked_prompt,
 
             # FUNC-PROC-009 원문 폐기 검증
@@ -118,7 +119,6 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
         dept_total = len(adf[adf["department"] == dept])
         task_count = len(group)
         task_ratio = task_count / dept_total * 100
-
         total_cost = float(group["cost"].sum())
         unique_users = int(group["user_hash"].nunique())
         avg_risk = float(group["risk_score"].mean())
@@ -126,16 +126,27 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
         # FUNC-PROC-008 자동화 후보 매칭
         auto_info = match_automation_candidate(task_label)
 
+        # FUNC-PROC-007 Opportunity Score 계산
         opportunity = calculate_opportunity_score(
             frequency_ratio=task_ratio,
             repeat_score=normalize(task_count, max_count),
             cost_score=normalize(total_cost, max_cost),
             user_score=normalize(unique_users, max_users),
-            difficulty=auto_info["difficulty"],
         )
 
         # SCR-RECO-004 Risk 기반 도입 판단
         decision_info = adoption_decision(opportunity, avg_risk)
+
+        # SCR-RECO-003 추천 근거 설명
+        reason = build_reason(
+            department=dept,
+            task_label=task_label,
+            task_ratio=task_ratio,
+            user_count=unique_users,
+            avg_risk=avg_risk,
+            total_cost=total_cost,
+            opportunity_score=opportunity,
+        )
 
         recommendations.append({
             "department": dept,
@@ -151,14 +162,7 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
             "decision_level": decision_info["decision_level"],
             "decision_message": decision_info["message"],
             "required_action": decision_info["required_action"],
-            "reason": build_reason(
-                department=dept,
-                task_label=task_label,
-                task_ratio=task_ratio,
-                user_count=unique_users,
-                avg_risk=avg_risk,
-                total_cost=total_cost,
-            ),
+            "reason": reason,
         })
 
     if not recommendations:

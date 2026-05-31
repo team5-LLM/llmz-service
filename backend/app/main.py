@@ -21,6 +21,10 @@ from app.schemas.upload_history import (
     UploadHistoryListResponse,
 )
 
+from app.schemas.log_schema import MaskingRuleCreate, MaskingRuleUpdate
+from app.services.admin_rules import list_rules, create_rule, update_rule, delete_rule
+from app.services.embedding_access import get_embedding_access_policy
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,11 +40,10 @@ async def lifespan(app: FastAPI):
     yield
 
 
-# FastAPI 애플리케이션 설정
 app = FastAPI(
     title="LLM Automation Opportunity API",
     description="CSV 기반 부서별 LLM 사용 패턴 분석 및 AI 업무 자동화 추천 API",
-    version="0.4.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
@@ -55,7 +58,20 @@ app.add_middleware(
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_CSV_PATH = PROJECT_ROOT / "data-sample" / "sample_llm_logs.csv"
 
-# 루트 API
+
+def _analyze_sample_or_404() -> dict:
+    """
+    샘플 CSV 기반 조회 API에서 반복되는 파일 확인/분석 로직.
+    """
+    if not SAMPLE_CSV_PATH.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"샘플 CSV를 찾을 수 없습니다: {SAMPLE_CSV_PATH}",
+        )
+
+    return analyze_csv_file(SAMPLE_CSV_PATH)
+
+
 @app.get("/")
 def root():
     return {
@@ -65,7 +81,6 @@ def root():
     }
 
 
-# 서비스 상태 확인 API
 @app.get("/api/health")
 def health_check():
     db = sql_status()
@@ -77,19 +92,11 @@ def health_check():
     }
 
 
-# CSV 분석 API
 @app.get("/api/analyze-sample")
 def analyze_sample():
-    if not SAMPLE_CSV_PATH.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"샘플 CSV를 찾을 수 없습니다: {SAMPLE_CSV_PATH}",
-        )
-
-    return analyze_csv_file(SAMPLE_CSV_PATH)
+    return _analyze_sample_or_404()
 
 
-# CSV 업로드 API
 @app.post("/api/upload")
 async def upload_csv(file: UploadFile = File(...)):
     """실행 흐름:
@@ -205,17 +212,12 @@ async def upload_csv(file: UploadFile = File(...)):
                 )
 
 
-# 업로드 이력 목록 조회 API
 @app.get("/api/uploads/history", response_model=UploadHistoryListResponse)
 def list_upload_history(
     limit: int = Query(default=50, ge=1, le=200),
     skip: int = Query(default=0, ge=0),
 ):
-    """SCR-INPUT-004 — 데이터 입력 이력 목록 조회 (성공/실패/대기 포함).
-
-    - 최신 업로드부터 정렬
-    - limit/skip 페이징 (기본 50건)
-    """
+    """SCR-INPUT-004 — 데이터 입력 이력 목록 조회."""
     docs = history_svc.list_uploads(limit=limit, skip=skip)
     total = history_svc.count_uploads()
 
@@ -240,10 +242,9 @@ def list_upload_history(
     return UploadHistoryListResponse(items=items, total=total, limit=limit, skip=skip)
 
 
-# 업로드 이력 상세 보기 API
 @app.get("/api/uploads/{upload_id}", response_model=UploadHistoryDetailResponse)
 def get_upload_history_detail(upload_id: str):
-    """SCR-INPUT-004 — 단일 업로드 상태 변경 이력(status_history) 포함 상세."""
+    """SCR-INPUT-004 — 단일 업로드 상태 변경 이력 포함 상세."""
     doc = history_svc.get_upload(upload_id)
     if doc is None:
         raise HTTPException(
@@ -272,33 +273,20 @@ def get_upload_history_detail(upload_id: str):
     )
 
 
-# Recommendations API
 @app.get("/api/recommendations")
 def get_recommendations():
     """전체 자동화 추천 카드 목록 조회."""
-    if not SAMPLE_CSV_PATH.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"샘플 CSV를 찾을 수 없습니다: {SAMPLE_CSV_PATH}",
-        )
-
-    result = analyze_csv_file(SAMPLE_CSV_PATH)
+    result = _analyze_sample_or_404()
     return {
         "count": len(result["recommendations"]),
         "recommendations": result["recommendations"],
     }
 
-# 자동화 추천 카드 목록 조회 API
+
 @app.get("/api/recommendations/{department}")
 def get_recommendations_by_department(department: str):
     """특정 부서의 자동화 추천 카드 목록 조회."""
-    if not SAMPLE_CSV_PATH.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"샘플 CSV를 찾을 수 없습니다: {SAMPLE_CSV_PATH}",
-        )
-
-    result = analyze_csv_file(SAMPLE_CSV_PATH)
+    result = _analyze_sample_or_404()
     items = [
         item for item in result["recommendations"]
         if item["department"] == department
@@ -311,17 +299,10 @@ def get_recommendations_by_department(department: str):
     }
 
 
-# 자동화 추천 카드 상세 보기 API
 @app.get("/api/recommendations/{department}/{task_label}")
 def get_recommendation_detail(department: str, task_label: str):
     """SCR-RECO-002 추천 상세 보기 API."""
-    if not SAMPLE_CSV_PATH.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"샘플 CSV를 찾을 수 없습니다: {SAMPLE_CSV_PATH}",
-        )
-
-    result = analyze_csv_file(SAMPLE_CSV_PATH)
+    result = _analyze_sample_or_404()
 
     target = None
     for item in result["recommendations"]:
@@ -338,7 +319,6 @@ def get_recommendation_detail(department: str, task_label: str):
     return build_recommendation_detail(target)
 
 
-# Risk 기반 도입 판단 API
 @app.get("/api/recommendations/{department}/{task_label}/decision")
 def get_risk_based_decision(department: str, task_label: str):
     """SCR-RECO-004 Risk 기반 도입 판단 API."""
@@ -356,3 +336,51 @@ def get_risk_based_decision(department: str, task_label: str):
         "decision_message": detail["decision_message"],
         "required_action": detail["required_action"],
     }
+
+
+@app.get("/api/embedding/access-policy")
+def embedding_access_policy():
+    """
+    FUNC-PROC-011 Embedding 접근 통제.
+    원문 prompt_text를 embedding 대상으로 사용하지 않고,
+    masked_prompt만 사용한다는 정책을 반환합니다.
+    """
+    return get_embedding_access_policy()
+
+
+@app.get("/api/admin/masking-rules")
+def admin_list_masking_rules():
+    """
+    SCR-ADMIN-001 마스킹 규칙 목록 조회.
+    """
+    return {"count": len(list_rules()), "items": list_rules()}
+
+
+@app.post("/api/admin/masking-rules")
+def admin_create_masking_rule(rule: MaskingRuleCreate):
+    """
+    SCR-ADMIN-001 마스킹 규칙 생성.
+    """
+    return create_rule(rule.model_dump())
+
+
+@app.patch("/api/admin/masking-rules/{rule_id}")
+def admin_update_masking_rule(rule_id: str, payload: MaskingRuleUpdate):
+    """
+    SCR-ADMIN-001 마스킹 규칙 수정.
+    """
+    updated = update_rule(rule_id, payload.model_dump())
+    if updated is None:
+        raise HTTPException(status_code=404, detail="마스킹 규칙을 찾을 수 없습니다.")
+    return updated
+
+
+@app.delete("/api/admin/masking-rules/{rule_id}")
+def admin_delete_masking_rule(rule_id: str):
+    """
+    SCR-ADMIN-001 마스킹 규칙 삭제.
+    """
+    ok = delete_rule(rule_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="마스킹 규칙을 찾을 수 없습니다.")
+    return {"deleted": True, "rule_id": rule_id}
