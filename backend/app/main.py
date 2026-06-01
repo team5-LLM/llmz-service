@@ -3,6 +3,7 @@ import time
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +20,10 @@ from app.schemas.upload_history import (
     UploadHistoryDetailResponse,
     UploadHistoryItem,
     UploadHistoryListResponse,
+    UploadHistorySummaryByStatus,
+    UploadHistorySummaryResponse,
 )
+from app.utils.date_range import InvalidDateRangeError, resolve_date_range
 
 from app.schemas.log_schema import MaskingRuleCreate, MaskingRuleUpdate
 from app.services.admin_rules import list_rules, create_rule, update_rule, delete_rule
@@ -57,6 +61,50 @@ app.add_middleware(
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_CSV_PATH = PROJECT_ROOT / "data-sample" / "sample_llm_logs.csv"
+
+# SCR-INPUT-004 — 허용 status 값 (§7.1)
+VALID_UPLOAD_STATUSES = frozenset({"pending", "processing", "completed", "failed"})
+
+
+# §0.5 기간 파라미터 → DateRange (400/422 변환)
+def _resolve_history_date_range(
+    from_date: Optional[str],
+    to_date: Optional[str],
+    month: Optional[str],
+):
+    try:
+        return resolve_date_range(from_date=from_date, to_date=to_date, month=month)
+    except InvalidDateRangeError as exc:
+        raise HTTPException(status_code=400, detail=exc.message) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# query param → UploadHistoryFilters 조립
+def _build_history_filters(
+    *,
+    filename_q: Optional[str],
+    status: Optional[str],
+    uploaded_by: Optional[str],
+    from_date: Optional[str],
+    to_date: Optional[str],
+    month: Optional[str],
+) -> history_svc.UploadHistoryFilters:
+    if status is not None and status not in VALID_UPLOAD_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "status는 pending, processing, completed, failed 중 하나여야 합니다."
+            ),
+        )
+
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    return history_svc.UploadHistoryFilters(
+        filename_q=filename_q,
+        status=status,
+        uploaded_by=uploaded_by,
+        date_range=date_range,
+    )
 
 
 def _analyze_sample_or_404() -> dict:
@@ -216,10 +264,24 @@ async def upload_csv(file: UploadFile = File(...)):
 def list_upload_history(
     limit: int = Query(default=50, ge=1, le=200),
     skip: int = Query(default=0, ge=0),
+    filename_q: Optional[str] = Query(default=None),
+    status: Optional[str] = Query(default=None),
+    uploaded_by: Optional[str] = Query(default=None),
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
 ):
     """SCR-INPUT-004 — 데이터 입력 이력 목록 조회."""
-    docs = history_svc.list_uploads(limit=limit, skip=skip)
-    total = history_svc.count_uploads()
+    filters = _build_history_filters(
+        filename_q=filename_q,
+        status=status,
+        uploaded_by=uploaded_by,
+        from_date=from_date,
+        to_date=to_date,
+        month=month,
+    )
+    docs = history_svc.list_uploads(limit=limit, skip=skip, filters=filters)
+    total = history_svc.count_uploads(filters=filters)
 
     items = [
         UploadHistoryItem(
@@ -240,6 +302,26 @@ def list_upload_history(
     ]
 
     return UploadHistoryListResponse(items=items, total=total, limit=limit, skip=skip)
+
+
+@app.get("/api/uploads/history/summary", response_model=UploadHistorySummaryResponse)
+def get_upload_history_summary(
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+):
+    """SCR-INPUT-004 — 데이터 입력 이력 요약 카운트."""
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    filters = history_svc.UploadHistoryFilters(date_range=date_range)
+    by_status = history_svc.count_uploads_by_status(filters=filters)
+    total = history_svc.count_uploads(filters=filters)
+
+    return UploadHistorySummaryResponse(
+        total=total,
+        by_status=UploadHistorySummaryByStatus(**by_status),
+        from_date=date_range.from_date,
+        to_date=date_range.to_date,
+    )
 
 
 @app.get("/api/uploads/{upload_id}", response_model=UploadHistoryDetailResponse)
