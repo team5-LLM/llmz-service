@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import List, Optional
 
 from sqlalchemy import func, select
@@ -29,8 +30,26 @@ from app.models.upload_history import (
     _now_iso,
 )
 from app.models.upload_history_table import UploadHistoryRow
+from app.utils.date_range import DateRange
 
 logger = logging.getLogger(__name__)
+
+# summary API by_status 집계 대상 (§2.4 — 4키 항상 포함)
+SUMMARY_STATUSES = (
+    UploadStatus.COMPLETED.value,
+    UploadStatus.PROCESSING.value,
+    UploadStatus.PENDING.value,
+    UploadStatus.FAILED.value,
+)
+
+
+# 이력 목록 / count / summary 공통 필터 조건
+@dataclass(frozen=True)
+class UploadHistoryFilters:
+    filename_q: Optional[str] = None
+    status: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    date_range: Optional[DateRange] = None
 
 # JSON 직렬화
 def _dump_json(value) -> str:
@@ -79,6 +98,26 @@ def _status_value(status) -> str:
     if isinstance(status, UploadStatus):
         return status.value
     return str(status)
+
+# list / count / summary — 동일 WHERE (페이징 total 일치 보장)
+def _apply_filters(query, filters: UploadHistoryFilters):
+    """공통 WHERE 조건 — list/count/summary 집계에 동일 적용."""
+    if filters.filename_q:
+        query = query.where(
+            UploadHistoryRow.filename.ilike(f"%{filters.filename_q}%")
+        )
+    if filters.status:
+        query = query.where(UploadHistoryRow.status == filters.status)
+    if filters.uploaded_by:
+        query = query.where(UploadHistoryRow.uploaded_by == filters.uploaded_by)
+    if filters.date_range:
+        query = query.where(
+            UploadHistoryRow.uploaded_at >= filters.date_range.from_date
+        ).where(
+            UploadHistoryRow.uploaded_at < filters.date_range.from_date_exclusive_upper
+        )
+    return query
+
 
 # Pydantic 모델을 데이터베이스 행에 적용
 def _apply_doc_to_row(row: UploadHistoryRow, doc: UploadHistoryDoc) -> None:
@@ -220,20 +259,24 @@ def mark_validation_failed(
 
 
 # 업로드 이력 페이징 조회
-def list_uploads(*, limit: int = 50, skip: int = 0) -> List[UploadHistoryDoc]:
+def list_uploads(
+    *,
+    limit: int = 50,
+    skip: int = 0,
+    filters: Optional[UploadHistoryFilters] = None,
+) -> List[UploadHistoryDoc]:
     """이력 페이징 조회. 최신 업로드부터 정렬"""
     session = safe_session()
     if session is None:
         logger.warning("SQL 미설정 — list_uploads 빈 결과 반환")
         return []
 
+    filters = filters or UploadHistoryFilters()
+
     try:
-        rows = session.scalars(
-            select(UploadHistoryRow)
-            .order_by(UploadHistoryRow.uploaded_at.desc())
-            .offset(int(skip))
-            .limit(int(limit))
-        ).all()
+        query = select(UploadHistoryRow).order_by(UploadHistoryRow.uploaded_at.desc())
+        query = _apply_filters(query, filters)
+        rows = session.scalars(query.offset(int(skip)).limit(int(limit))).all()
         return [_row_to_doc(row) for row in rows]
     except SQLAlchemyError as exc:
         logger.error("list_uploads 실패: %s", exc)
@@ -241,17 +284,54 @@ def list_uploads(*, limit: int = 50, skip: int = 0) -> List[UploadHistoryDoc]:
     finally:
         session.close()
 
+
 # 업로드 이력 총 개수 조회
-def count_uploads() -> int:
+def count_uploads(*, filters: Optional[UploadHistoryFilters] = None) -> int:
     session = safe_session()
     if session is None:
         return 0
 
+    filters = filters or UploadHistoryFilters()
+
     try:
-        return session.scalar(select(func.count()).select_from(UploadHistoryRow)) or 0
+        query = select(func.count()).select_from(UploadHistoryRow)
+        query = _apply_filters(query, filters)
+        return session.scalar(query) or 0
     except SQLAlchemyError as exc:
         logger.error("count_uploads 실패: %s", exc)
         return 0
+    finally:
+        session.close()
+
+
+# status별 건수 집계 (GET /api/uploads/history/summary)
+def count_uploads_by_status(
+    *, filters: Optional[UploadHistoryFilters] = None
+) -> dict[str, int]:
+    """기간·필터 내 status별 건수. summary API용."""
+    empty = {status: 0 for status in SUMMARY_STATUSES}
+    session = safe_session()
+    if session is None:
+        return empty
+
+    filters = filters or UploadHistoryFilters()
+
+    try:
+        query = (
+            select(UploadHistoryRow.status, func.count())
+            .select_from(UploadHistoryRow)
+            .group_by(UploadHistoryRow.status)
+        )
+        query = _apply_filters(query, filters)
+        rows = session.execute(query).all()
+        counts = dict(empty)
+        for status, count in rows:
+            if status in counts:
+                counts[status] = int(count)
+        return counts
+    except SQLAlchemyError as exc:
+        logger.error("count_uploads_by_status 실패: %s", exc)
+        return empty
     finally:
         session.close()
 

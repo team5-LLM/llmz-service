@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
+# Upload Status Enum
 class UploadStatus(str, Enum):
     PENDING = "pending"
     PROCESSING = "processing"
@@ -32,18 +32,20 @@ def _now_iso() -> str:
     """ISO-8601 UTC 타임스탬프."""
     return datetime.now(timezone.utc).isoformat()
 
-
+# Status Event Model
 class StatusEvent(BaseModel):
     status: UploadStatus
     at: str = Field(default_factory=_now_iso)
     message: Optional[str] = None
 
 
+# Validation Error Item Model
 class ValidationErrorItem(BaseModel):
     row_index: int
     errors: List[str]
 
 
+# Upload Summary Model
 class UploadSummary(BaseModel):
     """analysis_pipeline.analyze_csv_file() 결과의 summary 부분."""
 
