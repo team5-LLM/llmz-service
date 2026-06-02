@@ -2,6 +2,7 @@ import logging
 import time
 import tempfile
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -35,6 +36,7 @@ from app.schemas.repeat_pattern import (
     DepartmentRepeatStat,
     RepeatPatternItem,
 )
+from app.schemas.user import UserProfileResponse
 from app.services import dashboard_service as dashboard_svc
 from app.services import repeat_pattern_service as repeat_svc
 from app.utils.date_range import InvalidDateRangeError, resolve_date_range
@@ -153,6 +155,19 @@ def health_check():
         "db": db,
         "storage": storage,
     }
+
+
+# Layout 사용자 프로필 (단일 관리자 모드)
+@app.get("/api/users/me", response_model=UserProfileResponse)
+def get_current_user():
+    """P0/P1 단일 관리자 — SSO 전 고정 프로필."""
+    return UserProfileResponse(
+        user_id="anonymous-admin",
+        display_name="관리자",
+        role="admin",
+        department="ALL",
+        logged_in_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+    )
 
 
 # SCR-RECO-001 샘플 CSV 기반 조회 API
