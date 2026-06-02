@@ -4,6 +4,17 @@ type Props = {
   data: Recommendation[]
 }
 
+type Field = {
+  label: string
+  value: string
+}
+
+const fields = (item: Recommendation): Field[] => [
+  { label: '기대 효과',   value: item.expected_effect },
+  { label: '구현 난이도', value: item.difficulty },
+  { label: '필요 리소스', value: item.required_resources },
+]
+
 const RecommendationList = ({ data }: Props) => {
   return (
     <>
@@ -11,26 +22,12 @@ const RecommendationList = ({ data }: Props) => {
         <div key={index} className="bg-white rounded-lg p-[30px] flex flex-col gap-4">
           <span className="font-bold text-xl text-black">{item.service_name}</span>
 
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1">
-              <span className="font-bold text-md text-black">기대 효과</span>
+          {fields(item).map(({ label, value }) => (
+            <div key={label} className="flex flex-col gap-1">
+              <span className="font-bold text-md text-black">{label}</span>
+              <span className="text-md text-black">{value}</span>
             </div>
-            <span className="text-md text-black">{item.expected_effect}</span>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1">
-              <span className="font-bold text-md text-black">구현 난이도</span>
-            </div>
-            <span className="text-md text-black">{item.difficulty}</span>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-1">
-              <span className="font-bold text-md text-black">필요 리소스</span>
-            </div>
-            <span className="text-md text-black">{item.required_resources}</span>
-          </div>
+          ))}
         </div>
       ))}
     </>
