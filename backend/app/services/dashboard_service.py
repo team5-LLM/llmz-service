@@ -29,68 +29,96 @@ from app.schemas.dashboard import (
     TrendPoint,
 )
 from app.services.scoring import risk_level
+from app.services.analysis_pipeline import (
+    build_department_stats,
+    build_recommendations,
+    build_summary_from_dataframe,
+)
 from app.utils.date_range import DateRange
+from app.utils.log_date import parse_log_date
 
 logger = logging.getLogger(__name__)
 
 _COMPLETED = UploadStatus.COMPLETED.value
 
 
-def _completed_in_range_query(date_range: DateRange):
-    """기간 내 completed 업로드 — uploaded_at 포함 범위 (이력 API와 동일)."""
-    return (
-        select(UploadHistoryRow.upload_id)
-        .where(UploadHistoryRow.status == _COMPLETED)
-        .where(UploadHistoryRow.uploaded_at >= date_range.from_date)
-        .where(UploadHistoryRow.uploaded_at < date_range.from_date_exclusive_upper)
-        .order_by(UploadHistoryRow.uploaded_at.desc())
-    )
+def prompt_log_row_to_dict(row: PromptLogRow) -> dict[str, Any]:
+    """PromptLogRow → analyze/build_* 파이프라인용 dict."""
+    return {
+        "log_id": int(row.log_id),
+        "department": row.department,
+        "user_hash": row.user_hash,
+        "model": row.model,
+        "input_tokens": float(row.input_tokens),
+        "output_tokens": float(row.output_tokens),
+        "total_tokens": float(row.total_tokens),
+        "cost": float(row.cost),
+        "created_at": str(row.created_at),
+        "masked_prompt": row.masked_prompt,
+        "task_label": row.task_label,
+        "risk_score": int(row.risk_score),
+        "risk_level": row.risk_level,
+        "original_prompt_stored": bool(row.original_prompt_stored),
+        "original_discard_verified": bool(row.original_discard_verified),
+        "discard_verification_message": row.discard_verification_message,
+        "pii_detected": bool(row.pii_detected),
+        "customer_detected": bool(row.customer_detected),
+        "confidential_detected": bool(row.confidential_detected),
+        "financial_detected": bool(row.financial_detected),
+        "legal_detected": bool(row.legal_detected),
+        "secret_detected": bool(row.secret_detected),
+        "hr_detected": bool(row.hr_detected),
+        "exposure_detected": bool(row.exposure_detected),
+    }
 
 
-def _latest_completed_query():
-    """전체 기간 중 가장 최근 completed 1건 (fallback)."""
-    return (
-        select(UploadHistoryRow.upload_id)
-        .where(UploadHistoryRow.status == _COMPLETED)
-        .order_by(UploadHistoryRow.uploaded_at.desc())
-        .limit(1)
-    )
+def fetch_prompt_log_rows_in_range(
+    date_range: DateRange,
+    *,
+    department: Optional[str] = None,
+) -> List[PromptLogRow]:
+    """
+    completed 업로드의 prompt_logs 중 created_at 이 기간 내인 행.
+    대시보드·Risk·추천·반복패턴 공통 데이터 소스.
+    """
+    session = safe_session()
+    if session is None:
+        logger.warning("SQL 미설정 — fetch_prompt_log_rows_in_range 빈 결과")
+        return []
+
+    try:
+        completed_ids = select(UploadHistoryRow.upload_id).where(
+            UploadHistoryRow.status == _COMPLETED
+        )
+        query = (
+            select(PromptLogRow)
+            .where(PromptLogRow.upload_id.in_(completed_ids))
+            .where(PromptLogRow.created_at >= date_range.from_date)
+            .where(PromptLogRow.created_at < date_range.from_date_exclusive_upper)
+        )
+        if department is not None:
+            query = query.where(PromptLogRow.department == department)
+        return list(session.scalars(query).all())
+    except SQLAlchemyError as exc:
+        logger.error("fetch_prompt_log_rows_in_range 실패: %s", exc)
+        return []
+    finally:
+        session.close()
 
 
 def resolve_upload_ids(date_range: DateRange) -> List[str]:
     """
-    대시보드 집계 대상 upload_id 목록.
-
-    1. date_range 내 status=completed 인 upload_id (최신순)
-    2. 없으면 전체 upload_history 에서 최신 completed 1건
-    3. SQL 미설정/오류 → []
+    기간 내 prompt_logs.created_at 에 해당하는 completed upload_id (중복 제거).
     """
-    session = safe_session()
-    if session is None:
-        logger.warning("SQL 미설정 — resolve_upload_ids 빈 결과 반환")
-        return []
-
-    try:
-        rows = session.scalars(_completed_in_range_query(date_range)).all()
-        if rows:
-            return list(rows)
-
-        fallback = session.scalar(_latest_completed_query())
-        if fallback is not None:
-            logger.info(
-                "기간 %s~%s 내 completed 없음 — 최신 completed 1건 사용 (upload_id=%s)",
-                date_range.from_date,
-                date_range.to_date,
-                fallback,
-            )
-            return [fallback]
-
-        return []
-    except SQLAlchemyError as exc:
-        logger.error("resolve_upload_ids 실패: %s", exc)
-        return []
-    finally:
-        session.close()
+    rows = fetch_prompt_log_rows_in_range(date_range)
+    seen: set[str] = set()
+    ordered: List[str] = []
+    for row in rows:
+        if row.upload_id in seen:
+            continue
+        seen.add(row.upload_id)
+        ordered.append(row.upload_id)
+    return ordered
 
 
 def _load_summary_json(raw: str | None) -> UploadSummary | None:
@@ -135,34 +163,17 @@ def _merge_summaries(summaries: List[UploadSummary]) -> UploadSummary:
 
 def get_dashboard_summary(date_range: DateRange) -> UploadSummary:
     """
-    KPI 3카드 summary — resolve_upload_ids → upload_history.summary_json 집계
-    upload 없음 / SQL 미설정 → 0 summary
+    KPI 3카드 summary — prompt_logs.created_at 기간 필터 후 재집계.
     """
-    upload_ids = resolve_upload_ids(date_range)
-    if not upload_ids:
+    rows = fetch_prompt_log_rows_in_range(date_range)
+    if not rows:
         return UploadSummary()
 
-    session = safe_session()
-    if session is None:
-        logger.warning("SQL 미설정 — get_dashboard_summary 0 summary 반환")
-        return UploadSummary()
+    import pandas as pd
 
-    try:
-        query = select(UploadHistoryRow).where(
-            UploadHistoryRow.upload_id.in_(upload_ids)
-        )
-        rows = session.scalars(query).all()
-        summaries = [
-            parsed
-            for row in rows
-            if (parsed := _load_summary_json(row.summary_json)) is not None
-        ]
-        return _merge_summaries(summaries)
-    except SQLAlchemyError as exc:
-        logger.error("get_dashboard_summary 실패: %s", exc)
-        return UploadSummary()
-    finally:
-        session.close()
+    log_dicts = [prompt_log_row_to_dict(row) for row in rows]
+    summary = build_summary_from_dataframe(pd.DataFrame(log_dicts))
+    return UploadSummary.model_validate(summary)
 
 
 def _load_task_distribution(raw: str | None) -> List[dict[str, Any]]:
@@ -266,35 +277,42 @@ def _merge_department_stats(rows: List[dict[str, Any]]) -> List[DepartmentStatIt
     return merged
 
 
+def _department_stat_dicts_to_items(stats: List[dict[str, Any]]) -> List[DepartmentStatItem]:
+    items: List[DepartmentStatItem] = []
+    for stat in stats:
+        task_items = [
+            {"label": task.get("label", ""), "count": int(task.get("count", 0))}
+            for task in stat.get("task_distribution", [])
+        ]
+        items.append(
+            DepartmentStatItem(
+                department=stat["department"],
+                total_requests=int(stat["total_requests"]),
+                total_tokens=int(stat["total_tokens"]),
+                total_cost=float(stat["total_cost"]),
+                user_count=int(stat["user_count"]),
+                avg_risk_score=float(stat["avg_risk_score"]),
+                risk_level=stat["risk_level"],
+                high_critical_ratio=float(stat["high_critical_ratio"]),
+                task_distribution=_normalize_task_distribution(task_items),
+            )
+        )
+    return items
+
+
 def get_dashboard_departments(date_range: DateRange) -> List[DepartmentStatItem]:
     """
-    §3.3 department_stats[] — resolve_upload_ids → department_stats 테이블 조회·병합.
-    upload 없음 / SQL 미설정 → [].
+    §3.3 department_stats[] — prompt_logs.created_at 기간 필터 후 재집계.
     """
-    upload_ids = resolve_upload_ids(date_range)
-    if not upload_ids:
+    rows = fetch_prompt_log_rows_in_range(date_range)
+    if not rows:
         return []
 
-    session = safe_session()
-    if session is None:
-        logger.warning("SQL 미설정 — get_dashboard_departments 빈 배열 반환")
-        return []
+    import pandas as pd
 
-    try:
-        query = select(DepartmentStatRow).where(
-            DepartmentStatRow.upload_id.in_(upload_ids)
-        )
-        rows = session.scalars(query).all()
-        if not rows:
-            return []
-
-        merge_inputs = [_row_to_merge_dict(row) for row in rows]
-        return _merge_department_stats(merge_inputs)
-    except SQLAlchemyError as exc:
-        logger.error("get_dashboard_departments 실패: %s", exc)
-        return []
-    finally:
-        session.close()
+    log_dicts = [prompt_log_row_to_dict(row) for row in rows]
+    stats = build_department_stats(pd.DataFrame(log_dicts))
+    return _department_stat_dicts_to_items(stats)
 
 
 Granularity = Literal["daily", "weekly", "monthly"]
@@ -305,19 +323,7 @@ _VALID_TASK_SORTS = frozenset({"priority", "count", "ratio"})
 
 
 def _parse_log_date(created_at: str) -> date | None:
-    text = (created_at or "").strip()
-    if not text:
-        return None
-    try:
-        return date.fromisoformat(text[:10])
-    except ValueError:
-        pass
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S"):
-        try:
-            return datetime.strptime(text, fmt).date()
-        except ValueError:
-            continue
-    return None
+    return parse_log_date(created_at)
 
 
 def _date_in_range(log_date: date, date_range: DateRange) -> bool:
@@ -477,43 +483,26 @@ def get_dashboard_department_detail(
     if stat is None:
         return None
 
-    upload_ids = resolve_upload_ids(date_range)
     trend: List[TrendPoint] = []
     tasks: List[TaskPriorityItem] = []
 
-    session = safe_session()
-    if session is None:
-        logger.warning(
-            "SQL 미설정 — %s 상세 trend/tasks 빈 배열 반환",
-            department,
-        )
-    elif upload_ids:
-        try:
-            log_rows = session.scalars(
-                select(PromptLogRow).where(
-                    PromptLogRow.upload_id.in_(upload_ids),
-                    PromptLogRow.department == department,
-                )
-            ).all()
-            rec_rows = session.scalars(
-                select(RecommendationRow).where(
-                    RecommendationRow.upload_id.in_(upload_ids),
-                    RecommendationRow.department == department,
-                )
-            ).all()
-            trend = _build_trend_from_logs(list(log_rows), date_range, granularity)
-            tasks = _build_tasks_by_priority(
-                list(log_rows),
-                list(rec_rows),
-                task_sort,
+    log_rows = fetch_prompt_log_rows_in_range(date_range, department=department)
+    if log_rows:
+        import pandas as pd
+        from types import SimpleNamespace
+
+        log_dicts = [prompt_log_row_to_dict(row) for row in log_rows]
+        rec_dicts = build_recommendations(pd.DataFrame(log_dicts))
+        rec_ns = [
+            SimpleNamespace(
+                task_label=rec["task_label"],
+                opportunity_score=int(rec["opportunity_score"]),
+                risk_score=float(rec["risk_score"]),
             )
-        except SQLAlchemyError as exc:
-            logger.error("get_dashboard_department_detail 실패: %s", exc)
-        finally:
-            session.close()
-    else:
-        if session is not None:
-            session.close()
+            for rec in rec_dicts
+        ]
+        trend = _build_trend_from_logs(list(log_rows), date_range, granularity)
+        tasks = _build_tasks_by_priority(list(log_rows), rec_ns, task_sort)
 
     return {
         "department": department,

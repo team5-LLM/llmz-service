@@ -4,20 +4,13 @@ SCR-RISK-001 · SCR-RISK-002 · SCR-RISK-003 — 위험도 API 서비스.
 
 from __future__ import annotations
 
-import logging
 from typing import Callable, List, Optional, Tuple
 
-from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
-
-from app.db.sql import safe_session
 from app.models.analysis_result_tables import PromptLogRow
 from app.schemas.dashboard import DepartmentStatItem
 from app.schemas.risk import DepartmentRiskItem, RiskLevelDefinition, SensitiveBreakdownItem
 from app.services import dashboard_service as dashboard_svc
 from app.utils.date_range import DateRange
-
-logger = logging.getLogger(__name__)
 
 SensitivePredicate = Callable[[PromptLogRow], bool]
 
@@ -122,34 +115,6 @@ def get_risk_overview(date_range: DateRange) -> dict:
     }
 
 
-def _load_department_prompt_logs(
-    upload_ids: List[str],
-    department: str,
-) -> List[PromptLogRow]:
-    if not upload_ids:
-        return []
-
-    session = safe_session()
-    if session is None:
-        logger.warning("SQL 미설정 — %s prompt_logs 빈 결과", department)
-        return []
-
-    try:
-        return list(
-            session.scalars(
-                select(PromptLogRow).where(
-                    PromptLogRow.upload_id.in_(upload_ids),
-                    PromptLogRow.department == department,
-                )
-            ).all()
-        )
-    except SQLAlchemyError as exc:
-        logger.error("prompt_logs 조회 실패 (%s): %s", department, exc)
-        return []
-    finally:
-        session.close()
-
-
 def build_sensitive_breakdown(logs: List[PromptLogRow]) -> List[SensitiveBreakdownItem]:
     """prompt_logs 마스킹 플래그 → sensitive_breakdown[]"""
     items: List[SensitiveBreakdownItem] = []
@@ -192,8 +157,10 @@ def get_risk_department_detail(
     if stat is None:
         return None
 
-    upload_ids = dashboard_svc.resolve_upload_ids(date_range)
-    logs = _load_department_prompt_logs(upload_ids, department)
+    logs = dashboard_svc.fetch_prompt_log_rows_in_range(
+        date_range,
+        department=department,
+    )
     breakdown = build_sensitive_breakdown(logs)
 
     return {

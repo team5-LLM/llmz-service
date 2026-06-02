@@ -1,4 +1,6 @@
 from pathlib import Path
+from collections import defaultdict
+
 import pandas as pd
 
 from app.services.csv_loader import load_and_validate_csv
@@ -15,6 +17,62 @@ from app.services.recommender import (
     match_automation_candidate,
     build_reason,
 )
+from app.utils.log_date import log_month_key
+
+
+def build_summary_from_dataframe(adf: pd.DataFrame) -> dict:
+    if adf.empty:
+        return {
+            "total_logs": 0,
+            "departments": 0,
+            "total_tokens": 0,
+            "total_cost": 0.0,
+            "avg_risk_score": 0.0,
+        }
+    return {
+        "total_logs": int(len(adf)),
+        "departments": int(adf["department"].nunique()),
+        "total_tokens": int(adf["total_tokens"].sum()),
+        "total_cost": round(float(adf["cost"].sum()), 2),
+        "avg_risk_score": round(float(adf["risk_score"].mean()), 2),
+    }
+
+
+def build_analysis_result_from_logs(log_records: list[dict]) -> dict:
+    """prompt_logs / masked_logs 레코드 목록 → 분석 결과 dict."""
+    adf = pd.DataFrame(log_records)
+    if adf.empty:
+        return {
+            "summary": build_summary_from_dataframe(adf),
+            "department_stats": [],
+            "recommendations": [],
+            "sample_masked_logs": [],
+            "masked_logs": [],
+        }
+    return {
+        "summary": build_summary_from_dataframe(adf),
+        "department_stats": build_department_stats(adf),
+        "recommendations": build_recommendations(adf),
+        "sample_masked_logs": adf.head(20).to_dict(orient="records"),
+        "masked_logs": adf.to_dict(orient="records"),
+    }
+
+
+def split_analysis_result_by_month(result: dict) -> dict[str, dict]:
+    """
+    분석 결과를 prompt_logs.created_at 월(YYYY-MM)별로 분할.
+    업로드 시 월별 upload_id + persist 용.
+    """
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for log in result.get("masked_logs", []):
+        month = log_month_key(str(log.get("created_at", "")))
+        if month:
+            grouped[month].append(log)
+
+    return {
+        month: build_analysis_result_from_logs(logs)
+        for month, logs in sorted(grouped.items())
+    }
 
 
 def analyze_csv_file(csv_path: str | Path) -> dict:
@@ -55,20 +113,7 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
         })
 
     adf = pd.DataFrame(analyzed_rows)
-
-    return {
-        "summary": {
-            "total_logs": int(len(adf)),
-            "departments": int(adf["department"].nunique()),
-            "total_tokens": int(adf["total_tokens"].sum()),
-            "total_cost": round(float(adf["cost"].sum()), 2),
-            "avg_risk_score": round(float(adf["risk_score"].mean()), 2),
-        },
-        "department_stats": build_department_stats(adf),
-        "recommendations": build_recommendations(adf),
-        "sample_masked_logs": adf.head(20).to_dict(orient="records"),
-        "masked_logs": adf.to_dict(orient="records"),
-    }
+    return build_analysis_result_from_logs(adf.to_dict(orient="records"))
 
 
 def build_department_stats(adf: pd.DataFrame) -> list[dict]:
@@ -106,6 +151,9 @@ def build_department_stats(adf: pd.DataFrame) -> list[dict]:
 
 
 def build_recommendations(adf: pd.DataFrame) -> list[dict]:
+    if adf.empty:
+        return []
+
     recommendations = []
 
     max_cost = float(adf.groupby(["department", "task_label"])["cost"].sum().max())

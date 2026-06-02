@@ -13,7 +13,7 @@ from app.db.blob import delete_blob, is_storage_configured, storage_status, uplo
 from app.db.sql import init_db, is_sql_configured, sql_status
 from app.models.upload_history import ValidationErrorItem
 from app.services import upload_history_service as history_svc
-from app.services.analysis_pipeline import analyze_csv_file
+from app.services.analysis_pipeline import analyze_csv_file, split_analysis_result_by_month
 from app.services.csv_loader import CsvValidationError
 from app.services.persistence_service import persist_analysis_result
 from app.services.recommender import build_recommendation_detail
@@ -43,11 +43,13 @@ from app.schemas.risk import (
     RiskOverviewResponse,
 )
 from app.services import dashboard_service as dashboard_svc
+from app.services import recommendation_service as recommendation_svc
 from app.services import repeat_pattern_service as repeat_svc
 from app.services import risk_service as risk_svc
 from app.utils.date_range import InvalidDateRangeError, resolve_date_range
 
 from app.schemas.log_schema import MaskingRuleCreate, MaskingRuleUpdate
+from app.services import reset_service as reset_svc
 from app.services.admin_rules import list_rules, create_rule, update_rule, delete_rule
 from app.services.embedding_access import get_embedding_access_policy
 
@@ -417,52 +419,34 @@ def get_risk_department_detail(
 @app.post("/api/upload")
 async def upload_csv(file: UploadFile = File(...)):
     """실행 흐름:
-        1) upload_history INSERT (status=pending)
-        2) Blob 임시 업로드 (설정 시) → blob_path 기록
-        3) tempfile 저장 → analyze_csv_file → 결과 산출
-        4) 분석 후 Blob 삭제 → blob_purged_at 기록 (Lifecycle 7일은 백업)
-        5) persist_analysis_result → Azure SQL (department_stats, recommendations, prompt_logs)
-        6) 성공/실패 upload_history UPDATE
-        7) 응답에 upload_id 포함 → FE 가 SCR-INPUT-004 화면에서 추적 가능
+        1) tempfile 저장 → analyze_csv_file → 결과 산출
+        2) masked_logs.created_at 월(YYYY-MM)별 split
+        3) 첫 upload_id 기준 Blob 1회 임시 업로드 → blob_path 기록
+        4) 월마다 upload_history INSERT (department_scope=월) + persist
+        5) 분석 완료 후 Blob 삭제 → blob_purged_at (첫 upload_id)
+        6) 응답: upload_ids[] · log_months[] (+ 하위호환 upload_id)
     """
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="CSV 파일만 업로드할 수 있습니다.")
 
-    history_doc = history_svc.create_upload(
-        filename=file.filename,
-        uploaded_by="anonymous",
-    )
-
     started = time.monotonic()
+    content = await file.read()
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+
     blob_name: str | None = None
+    primary_doc = None
+
     try:
-        history_svc.mark_processing(history_doc)
-
-        content = await file.read()
-
-        if is_storage_configured():
-            try:
-                blob_path, blob_name = upload_csv_bytes(
-                    upload_id=history_doc.upload_id,
-                    filename=file.filename,
-                    data=content,
-                )
-                history_svc.record_blob_path(history_doc, blob_path)
-            except Exception as exc:
-                logger.warning(
-                    "Blob 업로드 실패 — 로컬 tempfile 분석만 진행 (upload_id=%s): %s",
-                    history_doc.upload_id,
-                    exc,
-                )
-                blob_name = None
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
-            tmp.write(content)
-            tmp_path = Path(tmp.name)
-
         try:
             result = analyze_csv_file(tmp_path)
         except CsvValidationError as exc:
+            history_doc = history_svc.create_upload(
+                filename=file.filename,
+                uploaded_by="anonymous",
+            )
             errors = [
                 ValidationErrorItem(row_index=exc.row_index, errors=exc.errors)
             ]
@@ -480,51 +464,101 @@ async def upload_csv(file: UploadFile = File(...)):
                     ],
                 },
             )
-        finally:
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except Exception:
-                pass
+
+        monthly = split_analysis_result_by_month(result)
+        if not monthly:
+            history_doc = history_svc.create_upload(
+                filename=file.filename,
+                uploaded_by="anonymous",
+            )
+            history_svc.mark_failed(
+                history_doc,
+                error_message="created_at 파싱 가능한 로그가 없습니다.",
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="created_at 파싱 가능한 로그가 없습니다.",
+            )
 
         duration_ms = int((time.monotonic() - started) * 1000)
-        summary = result.get("summary", {})
-        total_rows = int(summary.get("total_logs", 0))
+        upload_ids: list[str] = []
+        log_months: list[str] = []
 
-        history_svc.mark_completed(
-            history_doc,
-            summary=summary,
-            total_rows=total_rows,
-            valid_rows=total_rows,
-            invalid_rows=0,
-            duration_ms=duration_ms,
-        )
+        for month, month_result in monthly.items():
+            history_doc = history_svc.create_upload(
+                filename=file.filename,
+                uploaded_by="anonymous",
+                department_scope=month,
+            )
 
-        persist_analysis_result(history_doc.upload_id, result)
+            if primary_doc is None:
+                primary_doc = history_doc
+                if is_storage_configured():
+                    try:
+                        blob_path, blob_name = upload_csv_bytes(
+                            upload_id=history_doc.upload_id,
+                            filename=file.filename,
+                            data=content,
+                        )
+                        history_svc.record_blob_path(history_doc, blob_path)
+                    except Exception as exc:
+                        logger.warning(
+                            "Blob 업로드 실패 — 로컬 분석·SQL persist만 진행 (upload_id=%s): %s",
+                            history_doc.upload_id,
+                            exc,
+                        )
+                        blob_name = None
+
+            history_svc.mark_processing(history_doc)
+            summary = month_result.get("summary", {})
+            total_rows = int(summary.get("total_logs", 0))
+            history_svc.mark_completed(
+                history_doc,
+                summary=summary,
+                total_rows=total_rows,
+                valid_rows=total_rows,
+                invalid_rows=0,
+                duration_ms=duration_ms,
+            )
+            persist_analysis_result(history_doc.upload_id, month_result)
+            upload_ids.append(history_doc.upload_id)
+            log_months.append(month)
 
         response = {k: v for k, v in result.items() if k != "masked_logs"}
         return {
-            "upload_id": history_doc.upload_id,
-            "status": history_doc.status,
+            "upload_id": upload_ids[0],
+            "upload_ids": upload_ids,
+            "log_months": log_months,
+            "status": "completed",
             **response,
         }
 
     except HTTPException:
         raise
     except Exception as exc:
+        history_doc = history_svc.create_upload(
+            filename=file.filename,
+            uploaded_by="anonymous",
+        )
         history_svc.mark_failed(history_doc, error_message=str(exc))
         raise HTTPException(
             status_code=500,
             detail=f"분석 처리 중 오류가 발생했습니다: {exc}",
         )
     finally:
-        if blob_name and is_storage_configured():
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        if blob_name and is_storage_configured() and primary_doc is not None:
             try:
                 delete_blob(blob_name)
-                history_svc.record_blob_purged(history_doc)
+                history_svc.record_blob_purged(primary_doc)
             except Exception as exc:
                 logger.warning(
                     "Blob 삭제 실패 — Portal Lifecycle(7일)이 정리합니다 (upload_id=%s): %s",
-                    history_doc.upload_id,
+                    primary_doc.upload_id,
                     exc,
                 )
 
@@ -625,24 +659,30 @@ def get_upload_history_detail(upload_id: str):
 
 
 @app.get("/api/recommendations")
-def get_recommendations():
-    """전체 자동화 추천 카드 목록 조회."""
-    result = _analyze_sample_or_404()
+def get_recommendations(
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+):
+    """전체 자동화 추천 카드 목록 조회 (Azure SQL recommendations)."""
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    items = recommendation_svc.get_recommendations(date_range)
     return {
-        "count": len(result["recommendations"]),
-        "recommendations": result["recommendations"],
+        "count": len(items),
+        "recommendations": items,
     }
 
 
 @app.get("/api/recommendations/{department}")
-def get_recommendations_by_department(department: str):
+def get_recommendations_by_department(
+    department: str,
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+):
     """특정 부서의 자동화 추천 카드 목록 조회."""
-    result = _analyze_sample_or_404()
-    items = [
-        item for item in result["recommendations"]
-        if item["department"] == department
-    ]
-
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    items = recommendation_svc.get_recommendations(date_range, department=department)
     return {
         "department": department,
         "count": len(items),
@@ -651,16 +691,18 @@ def get_recommendations_by_department(department: str):
 
 
 @app.get("/api/recommendations/{department}/{task_label}")
-def get_recommendation_detail(department: str, task_label: str):
+def get_recommendation_detail(
+    department: str,
+    task_label: str,
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+):
     """SCR-RECO-002 추천 상세 보기 API."""
-    result = _analyze_sample_or_404()
-
-    target = None
-    for item in result["recommendations"]:
-        if item["department"] == department and item["task_label"] == task_label:
-            target = item
-            break
-
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    target = recommendation_svc.get_recommendation_item(
+        department, task_label, date_range
+    )
     if target is None:
         raise HTTPException(
             status_code=404,
@@ -671,10 +713,25 @@ def get_recommendation_detail(department: str, task_label: str):
 
 
 @app.get("/api/recommendations/{department}/{task_label}/decision")
-def get_risk_based_decision(department: str, task_label: str):
+def get_risk_based_decision(
+    department: str,
+    task_label: str,
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+):
     """SCR-RECO-004 Risk 기반 도입 판단 API."""
-    detail = get_recommendation_detail(department, task_label)
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    target = recommendation_svc.get_recommendation_item(
+        department, task_label, date_range
+    )
+    if target is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"{department} - {task_label} 추천 정보를 찾을 수 없습니다.",
+        )
 
+    detail = build_recommendation_detail(target)
     return {
         "department": detail["department"],
         "task_label": detail["task_label"],
@@ -697,6 +754,34 @@ def embedding_access_policy():
     masked_prompt만 사용한다는 정책을 반환합니다.
     """
     return get_embedding_access_policy()
+
+
+@app.post("/api/admin/reset-upload-data")
+def admin_reset_upload_data(
+    confirm: str = Query(
+        ...,
+        description="실수 방지 — 반드시 RESET 입력",
+    ),
+    purge_blobs: bool = Query(
+        default=True,
+        description="Azure Blob uploads 컨테이너 전체 purge (설정 시)",
+    ),
+):
+    """
+    데모/개발용 — upload_history · prompt_logs · department_stats · recommendations 전부 삭제.
+    마스킹 규칙 등 admin 설정은 유지.
+    """
+    if confirm != "RESET":
+        raise HTTPException(
+            status_code=400,
+            detail="confirm query에 RESET 을 입력하세요.",
+        )
+
+    result = reset_svc.reset_all_upload_data(purge_blobs=purge_blobs)
+    if not result.get("ok"):
+        raise HTTPException(status_code=503, detail=result.get("message", "초기화 실패"))
+
+    return result
 
 
 @app.get("/api/admin/masking-rules")

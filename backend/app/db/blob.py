@@ -127,3 +127,20 @@ def delete_blob(blob_name: str) -> None:
     blob_client = client.get_blob_client(container=settings.container, blob=blob_name)
     blob_client.delete_blob(delete_snapshots="include")
     logger.info("Blob 삭제 완료: %s/%s", settings.container, blob_name)
+
+
+def purge_upload_container() -> int:
+    """컨테이너 내 Blob 전부 삭제 (데모 reset용). 삭제 건수 반환."""
+    settings = get_storage_settings()
+    if not settings.is_configured:
+        return 0
+
+    client = get_blob_service_client()
+    container_client = client.get_container_client(settings.container)
+    deleted = 0
+    for blob in container_client.list_blobs():
+        container_client.delete_blob(blob.name, delete_snapshots="include")
+        deleted += 1
+    if deleted:
+        logger.info("Blob 컨테이너 purge 완료: %s (%s건)", settings.container, deleted)
+    return deleted
