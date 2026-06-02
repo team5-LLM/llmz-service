@@ -13,10 +13,6 @@ import re
 from dataclasses import dataclass
 from typing import Dict, List, Literal, Optional
 
-from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
-
-from app.db.sql import safe_session
 from app.models.analysis_result_tables import PromptLogRow
 from app.services import dashboard_service as dashboard_svc
 from app.utils.date_range import DateRange
@@ -202,26 +198,6 @@ def _row_to_entry(row: PromptLogRow) -> PromptLogEntry:
     )
 
 
-def _load_prompt_log_entries(upload_ids: List[str]) -> List[PromptLogEntry]:
-    if not upload_ids:
-        return []
-
-    session = safe_session()
-    if session is None:
-        logger.warning("SQL 미설정 — repeat pattern 빈 로그 반환")
-        return []
-
-    try:
-        rows = session.scalars(
-            select(PromptLogRow).where(PromptLogRow.upload_id.in_(upload_ids))
-        ).all()
-        return [_row_to_entry(row) for row in rows]
-    except SQLAlchemyError as exc:
-        logger.error("repeat pattern prompt_logs 조회 실패: %s", exc)
-        return []
-    finally:
-        session.close()
-
 
 def get_repeat_patterns(
     date_range: DateRange,
@@ -243,8 +219,8 @@ def get_repeat_patterns(
     if department is not None and department not in dept_names:
         return None
 
-    upload_ids = dashboard_svc.resolve_upload_ids(date_range)
-    entries = _load_prompt_log_entries(upload_ids)
+    log_rows = dashboard_svc.fetch_prompt_log_rows_in_range(date_range)
+    entries = [_row_to_entry(row) for row in log_rows]
 
     by_department: Dict[str, List[PromptLogEntry]] = {}
     for entry in entries:
