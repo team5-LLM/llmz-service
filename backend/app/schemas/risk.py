@@ -7,6 +7,15 @@ from pydantic import BaseModel
 from app.schemas.dashboard import DashboardPeriod
 
 
+SensitiveCategory = Literal[
+    "personal_info",
+    "customer_info",
+    "confidential",
+    "source_code",
+    "finance_legal",
+]
+
+
 class DepartmentRiskItem(BaseModel):
     """Critical/High 부서 요약."""
 
@@ -45,3 +54,23 @@ class RiskLevelsResponse(BaseModel):
     """GET /api/risk/levels"""
 
     levels: List[RiskLevelDefinition]
+
+
+class SensitiveBreakdownItem(BaseModel):
+    """민감정보 유형별 탐지 비중"""
+
+    category: SensitiveCategory
+    label: str
+    count: int
+    ratio: float
+
+
+class RiskDepartmentDetailResponse(BaseModel):
+    """GET /api/risk/departments/{department}"""
+
+    department: str
+    period: DashboardPeriod
+    risk_score: float
+    risk_level: Literal["Low", "Medium", "High", "Critical"]
+    high_critical_ratio: float
+    sensitive_breakdown: List[SensitiveBreakdownItem]

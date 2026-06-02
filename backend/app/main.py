@@ -37,7 +37,11 @@ from app.schemas.repeat_pattern import (
     RepeatPatternItem,
 )
 from app.schemas.user import UserProfileResponse
-from app.schemas.risk import RiskLevelsResponse, RiskOverviewResponse
+from app.schemas.risk import (
+    RiskDepartmentDetailResponse,
+    RiskLevelsResponse,
+    RiskOverviewResponse,
+)
 from app.services import dashboard_service as dashboard_svc
 from app.services import repeat_pattern_service as repeat_svc
 from app.services import risk_service as risk_svc
@@ -385,6 +389,28 @@ def get_risk_overview(
 def get_risk_levels():
     """SCR-RISK-003 — 위험도 등급 정의 툴팁 (§5.3)."""
     return RiskLevelsResponse(**risk_svc.get_risk_levels())
+
+
+# SCR-RISK-002 — 부서별 Risk + 민감정보 유형 분포 (§5.2)
+@app.get(
+    "/api/risk/departments/{department}",
+    response_model=RiskDepartmentDetailResponse,
+)
+def get_risk_department_detail(
+    department: str,
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+):
+    """SCR-RISK-002 — sensitive_breakdown[] (prompt_logs 마스킹 플래그)."""
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    detail = risk_svc.get_risk_department_detail(department, date_range)
+    if detail is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"부서를 찾을 수 없습니다: {department}",
+        )
+    return RiskDepartmentDetailResponse(**detail)
 
 
 # SCR-INPUT-004 데이터 입력 이력 목록 조회 API
