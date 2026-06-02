@@ -16,6 +16,11 @@ from app.services.analysis_pipeline import analyze_csv_file
 from app.services.csv_loader import CsvValidationError
 from app.services.persistence_service import persist_analysis_result
 from app.services.recommender import build_recommendation_detail
+from app.schemas.dashboard import (
+    DashboardDepartmentsResponse,
+    DashboardPeriod,
+    DashboardSummaryResponse,
+)
 from app.schemas.upload_history import (
     UploadHistoryDetailResponse,
     UploadHistoryItem,
@@ -23,6 +28,7 @@ from app.schemas.upload_history import (
     UploadHistorySummaryByStatus,
     UploadHistorySummaryResponse,
 )
+from app.services import dashboard_service as dashboard_svc
 from app.utils.date_range import InvalidDateRangeError, resolve_date_range
 
 from app.schemas.log_schema import MaskingRuleCreate, MaskingRuleUpdate
@@ -106,7 +112,7 @@ def _build_history_filters(
         date_range=date_range,
     )
 
-
+# SCR-RECO-001 샘플 CSV 기반 조회 API에서 반복되는 파일 확인/분석 로직
 def _analyze_sample_or_404() -> dict:
     """
     샘플 CSV 기반 조회 API에서 반복되는 파일 확인/분석 로직.
@@ -119,7 +125,7 @@ def _analyze_sample_or_404() -> dict:
 
     return analyze_csv_file(SAMPLE_CSV_PATH)
 
-
+# SCR-ROOT-001 루트 엔드포인트 조회 API
 @app.get("/")
 def root():
     return {
@@ -129,6 +135,7 @@ def root():
     }
 
 
+# SCR-ROOT-002 상태 확인 API
 @app.get("/api/health")
 def health_check():
     db = sql_status()
@@ -140,11 +147,51 @@ def health_check():
     }
 
 
+# SCR-RECO-001 샘플 CSV 기반 조회 API
 @app.get("/api/analyze-sample")
 def analyze_sample():
     return _analyze_sample_or_404()
 
 
+# SCR-DASH-001 메인 대시보드 KPI API
+@app.get("/api/dashboard/summary", response_model=DashboardSummaryResponse)
+def get_dashboard_summary(
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+):
+    """SCR-DASH-001 — 메인 대시보드 KPI (§3.2)."""
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    summary = dashboard_svc.get_dashboard_summary(date_range)
+    return DashboardSummaryResponse(
+        period=DashboardPeriod(
+            from_date=date_range.from_date,
+            to_date=date_range.to_date,
+        ),
+        summary=summary,
+    )
+
+
+# SCR-DASH-001 부서별 분포 차트 API
+@app.get("/api/dashboard/departments", response_model=DashboardDepartmentsResponse)
+def get_dashboard_departments(
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+):
+    """SCR-DASH-001 — 부서별 분포 차트 (§3.3)."""
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    department_stats = dashboard_svc.get_dashboard_departments(date_range)
+    return DashboardDepartmentsResponse(
+        period=DashboardPeriod(
+            from_date=date_range.from_date,
+            to_date=date_range.to_date,
+        ),
+        department_stats=department_stats,
+    )
+
+
+# SCR-INPUT-004 데이터 입력 이력 목록 조회 API
 @app.post("/api/upload")
 async def upload_csv(file: UploadFile = File(...)):
     """실행 흐름:
