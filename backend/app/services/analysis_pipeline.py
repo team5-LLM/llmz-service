@@ -168,11 +168,10 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
     if not recommendations:
         return []
 
-    result = []
     rdf = pd.DataFrame(recommendations)
-
+    result: list[dict] = []
     for _, group_items in rdf.groupby("department"):
-        top_items = group_items.sort_values("opportunity_score", ascending=False).head(3)
-        result.extend(top_items.to_dict(orient="records"))
+        sorted_items = group_items.sort_values("opportunity_score", ascending=False)
+        result.extend(sorted_items.to_dict(orient="records"))
 
     return sorted(result, key=lambda x: x["opportunity_score"], reverse=True)
