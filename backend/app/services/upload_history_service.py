@@ -34,7 +34,7 @@ from app.utils.date_range import DateRange
 
 logger = logging.getLogger(__name__)
 
-# summary API by_status 집계 대상 (§2.4 — 4키 항상 포함)
+# summary API by_status 집계 대상
 SUMMARY_STATUSES = (
     UploadStatus.COMPLETED.value,
     UploadStatus.PROCESSING.value,
