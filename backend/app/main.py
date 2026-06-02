@@ -37,8 +37,10 @@ from app.schemas.repeat_pattern import (
     RepeatPatternItem,
 )
 from app.schemas.user import UserProfileResponse
+from app.schemas.risk import RiskLevelsResponse, RiskOverviewResponse
 from app.services import dashboard_service as dashboard_svc
 from app.services import repeat_pattern_service as repeat_svc
+from app.services import risk_service as risk_svc
 from app.utils.date_range import InvalidDateRangeError, resolve_date_range
 
 from app.schemas.log_schema import MaskingRuleCreate, MaskingRuleUpdate
@@ -364,6 +366,25 @@ def get_department_repeat_patterns(
         unique_patterns=dept["unique_patterns"],
         patterns=[RepeatPatternItem(**item) for item in dept["patterns"]],
     )
+
+
+# SCR-RISK-001 · SCR-RISK-003 — 위험도 overview / levels API
+@app.get("/api/risk/overview", response_model=RiskOverviewResponse)
+def get_risk_overview(
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+):
+    """SCR-RISK-001 — Critical/High 부서 요약 (§5.1)."""
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    return RiskOverviewResponse(**risk_svc.get_risk_overview(date_range))
+
+
+# SCR-RISK-003 — 위험도 등급 정의 툴팁 API
+@app.get("/api/risk/levels", response_model=RiskLevelsResponse)
+def get_risk_levels():
+    """SCR-RISK-003 — 위험도 등급 정의 툴팁 (§5.3)."""
+    return RiskLevelsResponse(**risk_svc.get_risk_levels())
 
 
 # SCR-INPUT-004 데이터 입력 이력 목록 조회 API
