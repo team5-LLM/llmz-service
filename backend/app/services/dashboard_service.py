@@ -6,16 +6,28 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List
+from collections import defaultdict
+from datetime import date, datetime
+from typing import Any, Dict, List, Literal, Optional
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.sql import safe_session
-from app.models.analysis_result_tables import DepartmentStatRow
+from app.models.analysis_result_tables import (
+    DepartmentStatRow,
+    PromptLogRow,
+    RecommendationRow,
+)
 from app.models.upload_history import UploadStatus, UploadSummary
 from app.models.upload_history_table import UploadHistoryRow
-from app.schemas.dashboard import DepartmentStatItem, TaskDistributionItem
+from app.schemas.dashboard import (
+    DepartmentOverviewItem,
+    DepartmentStatItem,
+    TaskDistributionItem,
+    TaskPriorityItem,
+    TrendPoint,
+)
 from app.services.scoring import risk_level
 from app.utils.date_range import DateRange
 
@@ -283,3 +295,233 @@ def get_dashboard_departments(date_range: DateRange) -> List[DepartmentStatItem]
         return []
     finally:
         session.close()
+
+
+Granularity = Literal["daily", "weekly", "monthly"]
+TaskSort = Literal["priority", "count", "ratio"]
+
+_VALID_GRANULARITIES = frozenset({"daily", "weekly", "monthly"})
+_VALID_TASK_SORTS = frozenset({"priority", "count", "ratio"})
+
+
+def _parse_log_date(created_at: str) -> date | None:
+    text = (created_at or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _date_in_range(log_date: date, date_range: DateRange) -> bool:
+    start = date.fromisoformat(date_range.from_date)
+    end = date.fromisoformat(date_range.to_date)
+    return start <= log_date <= end
+
+
+def _trend_bucket(log_date: date, granularity: Granularity) -> str:
+    if granularity == "daily":
+        return log_date.isoformat()
+    if granularity == "weekly":
+        iso = log_date.isocalendar()
+        return f"{iso.year}-W{iso.week:02d}"
+    return log_date.strftime("%Y-%m")
+
+
+def _stat_to_overview(stat: DepartmentStatItem) -> DepartmentOverviewItem:
+    return DepartmentOverviewItem(
+        total_requests=stat.total_requests,
+        total_tokens=stat.total_tokens,
+        total_cost=stat.total_cost,
+        user_count=stat.user_count,
+        avg_risk_score=stat.avg_risk_score,
+        risk_level=stat.risk_level,
+    )
+
+
+def _build_trend_from_logs(
+    logs: List[PromptLogRow],
+    date_range: DateRange,
+    granularity: Granularity,
+) -> List[TrendPoint]:
+    buckets: Dict[str, dict[str, Any]] = defaultdict(
+        lambda: {
+            "requests": 0,
+            "tokens": 0,
+            "cost": 0.0,
+            "users": set(),
+        }
+    )
+
+    for row in logs:
+        log_date = _parse_log_date(row.created_at)
+        if log_date is None or not _date_in_range(log_date, date_range):
+            continue
+
+        bucket = _trend_bucket(log_date, granularity)
+        entry = buckets[bucket]
+        entry["requests"] += 1
+        entry["tokens"] += int(row.total_tokens)
+        entry["cost"] += float(row.cost)
+        entry["users"].add(row.user_hash)
+
+    return [
+        TrendPoint(
+            bucket=bucket,
+            requests=entry["requests"],
+            tokens=entry["tokens"],
+            cost=round(entry["cost"], 2),
+            users=len(entry["users"]),
+        )
+        for bucket, entry in sorted(buckets.items())
+    ]
+
+
+def _merge_recommendation_scores(
+    rows: List[RecommendationRow],
+) -> Dict[str, dict[str, Any]]:
+    """task_label별 opportunity(max) · risk(평균용 sum/count) 병합."""
+    merged: Dict[str, dict[str, Any]] = {}
+    for row in rows:
+        label = row.task_label
+        if label not in merged:
+            merged[label] = {
+                "opportunity_score": int(row.opportunity_score),
+                "risk_sum": float(row.risk_score),
+                "risk_count": 1,
+            }
+            continue
+        item = merged[label]
+        item["opportunity_score"] = max(
+            item["opportunity_score"],
+            int(row.opportunity_score),
+        )
+        item["risk_sum"] += float(row.risk_score)
+        item["risk_count"] += 1
+    return merged
+
+
+def _build_tasks_by_priority(
+    logs: List[PromptLogRow],
+    recommendations: List[RecommendationRow],
+    task_sort: TaskSort,
+) -> List[TaskPriorityItem]:
+    counts: Dict[str, int] = defaultdict(int)
+    risk_from_logs: Dict[str, List[int]] = defaultdict(list)
+
+    for row in logs:
+        counts[row.task_label] += 1
+        risk_from_logs[row.task_label].append(int(row.risk_score))
+
+    total = sum(counts.values())
+    if total == 0:
+        return []
+
+    rec_scores = _merge_recommendation_scores(recommendations)
+    items: List[TaskPriorityItem] = []
+
+    for task_label, count in counts.items():
+        ratio = round(count / total * 100, 1)
+        rec = rec_scores.get(task_label)
+        if rec is not None:
+            avg_risk = rec["risk_sum"] / rec["risk_count"]
+            opportunity = rec["opportunity_score"]
+        else:
+            log_risks = risk_from_logs[task_label]
+            avg_risk = sum(log_risks) / len(log_risks) if log_risks else 0.0
+            opportunity = 0
+
+        items.append(
+            TaskPriorityItem(
+                task_label=task_label,
+                count=count,
+                ratio=ratio,
+                opportunity_score=opportunity,
+                risk_score=round(avg_risk, 2),
+                risk_level=risk_level(avg_risk),
+            )
+        )
+
+    if task_sort == "count":
+        items.sort(key=lambda item: (-item.count, item.task_label))
+    elif task_sort == "ratio":
+        items.sort(key=lambda item: (-item.ratio, item.task_label))
+    else:
+        items.sort(
+            key=lambda item: (-item.opportunity_score, -item.count, item.task_label)
+        )
+
+    return items
+
+
+def get_dashboard_department_detail(
+    department: str,
+    date_range: DateRange,
+    *,
+    granularity: Granularity = "daily",
+    task_sort: TaskSort = "priority",
+) -> Optional[dict[str, Any]]:
+    """
+    §3.4 단일 부서 상세 — overview · trend[] · tasks_by_priority[].
+    부서 없음 → None (404).
+    """
+    departments = get_dashboard_departments(date_range)
+    stat = next((item for item in departments if item.department == department), None)
+    if stat is None:
+        return None
+
+    upload_ids = resolve_upload_ids(date_range)
+    trend: List[TrendPoint] = []
+    tasks: List[TaskPriorityItem] = []
+
+    session = safe_session()
+    if session is None:
+        logger.warning(
+            "SQL 미설정 — %s 상세 trend/tasks 빈 배열 반환",
+            department,
+        )
+    elif upload_ids:
+        try:
+            log_rows = session.scalars(
+                select(PromptLogRow).where(
+                    PromptLogRow.upload_id.in_(upload_ids),
+                    PromptLogRow.department == department,
+                )
+            ).all()
+            rec_rows = session.scalars(
+                select(RecommendationRow).where(
+                    RecommendationRow.upload_id.in_(upload_ids),
+                    RecommendationRow.department == department,
+                )
+            ).all()
+            trend = _build_trend_from_logs(list(log_rows), date_range, granularity)
+            tasks = _build_tasks_by_priority(
+                list(log_rows),
+                list(rec_rows),
+                task_sort,
+            )
+        except SQLAlchemyError as exc:
+            logger.error("get_dashboard_department_detail 실패: %s", exc)
+        finally:
+            session.close()
+    else:
+        if session is not None:
+            session.close()
+
+    return {
+        "department": department,
+        "period": {
+            "from_date": date_range.from_date,
+            "to_date": date_range.to_date,
+        },
+        "overview": _stat_to_overview(stat),
+        "trend": trend,
+        "tasks_by_priority": tasks,
+    }
