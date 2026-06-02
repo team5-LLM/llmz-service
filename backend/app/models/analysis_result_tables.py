@@ -101,3 +101,7 @@ class PromptLogRow(Base):
     secret_detected: Mapped[bool] = mapped_column(nullable=False, default=False)
     hr_detected: Mapped[bool] = mapped_column(nullable=False, default=False)
     exposure_detected: Mapped[bool] = mapped_column(nullable=False, default=False)
+
+    # FUNC-PROC-005 Sub-Clustering 연동 예정 (nullable · 마이그레이션 후 persist)
+    # cluster_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # pattern_label: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
