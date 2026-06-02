@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import unittest
+from datetime import date
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models.upload_history import UploadSummary
 from app.services import dashboard_service as svc
+from app.utils.date_range import DateRange
 
 
 class DashboardServiceMergeTests(unittest.TestCase):
@@ -87,6 +90,83 @@ class DashboardServiceMergeTests(unittest.TestCase):
         self.assertEqual(dept.task_distribution[0].ratio, 1.0)
 
 
+class DashboardDepartmentDetailTests(unittest.TestCase):
+    def test_parse_log_date(self):
+        self.assertEqual(svc._parse_log_date("2026-05-04 10:24:00"), date(2026, 5, 4))
+        self.assertEqual(svc._parse_log_date("2026-05-04"), date(2026, 5, 4))
+        self.assertIsNone(svc._parse_log_date(""))
+
+    def test_trend_bucket_formats(self):
+        log_date = date(2026, 5, 4)
+        self.assertEqual(svc._trend_bucket(log_date, "daily"), "2026-05-04")
+        self.assertEqual(svc._trend_bucket(log_date, "monthly"), "2026-05")
+        self.assertRegex(svc._trend_bucket(log_date, "weekly"), r"^\d{4}-W\d{2}$")
+
+    def test_build_trend_from_logs_daily(self):
+        logs = [
+            SimpleNamespace(
+                created_at="2026-05-01 10:00:00",
+                total_tokens=100,
+                cost=10.5,
+                user_hash="u1",
+            ),
+            SimpleNamespace(
+                created_at="2026-05-01 11:00:00",
+                total_tokens=200,
+                cost=5.0,
+                user_hash="u2",
+            ),
+            SimpleNamespace(
+                created_at="2026-05-02 09:00:00",
+                total_tokens=50,
+                cost=2.0,
+                user_hash="u1",
+            ),
+        ]
+        date_range = DateRange(from_date="2026-05-01", to_date="2026-05-31")
+        trend = svc._build_trend_from_logs(logs, date_range, "daily")
+
+        self.assertEqual(len(trend), 2)
+        self.assertEqual(trend[0].bucket, "2026-05-01")
+        self.assertEqual(trend[0].requests, 2)
+        self.assertEqual(trend[0].tokens, 300)
+        self.assertEqual(trend[0].cost, 15.5)
+        self.assertEqual(trend[0].users, 2)
+        self.assertEqual(trend[1].requests, 1)
+        self.assertEqual(trend[1].users, 1)
+
+    def test_build_tasks_by_priority_sort(self):
+        logs = [
+            SimpleNamespace(task_label="A", risk_score=10),
+            SimpleNamespace(task_label="A", risk_score=20),
+            SimpleNamespace(task_label="B", risk_score=30),
+        ]
+        recommendations = [
+            SimpleNamespace(
+                task_label="A",
+                opportunity_score=50,
+                risk_score=15.0,
+            ),
+            SimpleNamespace(
+                task_label="B",
+                opportunity_score=90,
+                risk_score=30.0,
+            ),
+        ]
+
+        by_priority = svc._build_tasks_by_priority(logs, recommendations, "priority")
+        self.assertEqual(by_priority[0].task_label, "B")
+        self.assertEqual(by_priority[0].opportunity_score, 90)
+
+        by_count = svc._build_tasks_by_priority(logs, recommendations, "count")
+        self.assertEqual(by_count[0].task_label, "A")
+        self.assertEqual(by_count[0].count, 2)
+        self.assertAlmostEqual(by_count[0].ratio, 66.7, places=1)
+
+        by_ratio = svc._build_tasks_by_priority(logs, recommendations, "ratio")
+        self.assertEqual(by_ratio[0].task_label, "A")
+
+
 class DashboardApiSmokeTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
@@ -125,6 +205,37 @@ class DashboardApiSmokeTests(unittest.TestCase):
     def test_invalid_month_422(self):
         resp = self.client.get("/api/dashboard/summary?month=2026-13")
         self.assertEqual(resp.status_code, 422)
+
+    def test_department_detail_not_found_404(self):
+        resp = self.client.get("/api/dashboard/departments/없는부서?month=2026-05")
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn("부서를 찾을 수 없습니다", resp.json()["detail"])
+
+    def test_department_detail_invalid_granularity_422(self):
+        resp = self.client.get(
+            "/api/dashboard/departments/마케팅팀?month=2026-05&granularity=hourly"
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_department_detail_invalid_task_sort_422(self):
+        resp = self.client.get(
+            "/api/dashboard/departments/마케팅팀?month=2026-05&task_sort=name"
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_department_detail_response_shape(self):
+        resp = self.client.get("/api/dashboard/departments/마케팅팀?month=2026-05")
+        if resp.status_code == 404:
+            return
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["department"], "마케팅팀")
+        self.assertIn("overview", body)
+        self.assertIn("trend", body)
+        self.assertIn("tasks_by_priority", body)
+        for task in body["tasks_by_priority"]:
+            self.assertGreaterEqual(task["ratio"], 0.0)
+            self.assertLessEqual(task["ratio"], 100.0)
 
 
 if __name__ == "__main__":

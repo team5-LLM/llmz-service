@@ -18,6 +18,7 @@ from app.services.persistence_service import persist_analysis_result
 from app.services.recommender import build_recommendation_detail
 from app.schemas.dashboard import (
     DashboardDepartmentsResponse,
+    DashboardDepartmentDetailResponse,
     DashboardPeriod,
     DashboardSummaryResponse,
 )
@@ -28,7 +29,14 @@ from app.schemas.upload_history import (
     UploadHistorySummaryByStatus,
     UploadHistorySummaryResponse,
 )
+from app.schemas.repeat_pattern import (
+    DashboardRepeatPatternsResponse,
+    DepartmentRepeatPatternsResponse,
+    DepartmentRepeatStat,
+    RepeatPatternItem,
+)
 from app.services import dashboard_service as dashboard_svc
+from app.services import repeat_pattern_service as repeat_svc
 from app.utils.date_range import InvalidDateRangeError, resolve_date_range
 
 from app.schemas.log_schema import MaskingRuleCreate, MaskingRuleUpdate
@@ -188,6 +196,158 @@ def get_dashboard_departments(
             to_date=date_range.to_date,
         ),
         department_stats=department_stats,
+    )
+
+
+# SCR-DASH-001 부서 상세 확장 — 시계열·우선순위 (§3.4)
+@app.get(
+    "/api/dashboard/departments/{department}",
+    response_model=DashboardDepartmentDetailResponse,
+)
+def get_dashboard_department_detail(
+    department: str,
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+    granularity: str = Query(default="daily", description="daily | weekly | monthly"),
+    task_sort: str = Query(default="priority", description="priority | count | ratio"),
+):
+    """SCR-DASH-001 P1 — 단일 부서 상세·시계열 (§3.4)."""
+    if granularity not in dashboard_svc._VALID_GRANULARITIES:
+        raise HTTPException(
+            status_code=422,
+            detail="granularity는 daily, weekly, monthly 중 하나여야 합니다.",
+        )
+    if task_sort not in dashboard_svc._VALID_TASK_SORTS:
+        raise HTTPException(
+            status_code=422,
+            detail="task_sort는 priority, count, ratio 중 하나여야 합니다.",
+        )
+
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    detail = dashboard_svc.get_dashboard_department_detail(
+        department,
+        date_range,
+        granularity=granularity,  # type: ignore[arg-type]
+        task_sort=task_sort,  # type: ignore[arg-type]
+    )
+    if detail is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"부서를 찾을 수 없습니다: {department}",
+        )
+    return DashboardDepartmentDetailResponse(
+        department=detail["department"],
+        period=DashboardPeriod(**detail["period"]),
+        overview=detail["overview"],
+        trend=detail["trend"],
+        tasks_by_priority=detail["tasks_by_priority"],
+    )
+
+
+def _parse_repeat_pattern_params(
+    method: str,
+    min_pattern_count: int,
+) -> tuple[str, int]:
+    if method not in repeat_svc._VALID_METHODS:
+        raise HTTPException(
+            status_code=422,
+            detail="method는 auto, heuristic, cluster 중 하나여야 합니다.",
+        )
+    if min_pattern_count < 2:
+        raise HTTPException(
+            status_code=422,
+            detail="min_pattern_count는 2 이상이어야 합니다.",
+        )
+    return method, min_pattern_count
+
+
+def _to_department_repeat_stat(data: dict) -> DepartmentRepeatStat:
+    return DepartmentRepeatStat(
+        department=data["department"],
+        total_requests=data["total_requests"],
+        repeat_requests=data["repeat_requests"],
+        repeat_ratio=data["repeat_ratio"],
+        unique_patterns=data["unique_patterns"],
+        patterns=[RepeatPatternItem(**item) for item in data["patterns"]],
+    )
+
+
+# SCR-DASH-003 — 부서별 반복 프롬프트 비율 (§3.5)
+@app.get(
+    "/api/dashboard/repeat-patterns",
+    response_model=DashboardRepeatPatternsResponse,
+)
+def get_dashboard_repeat_patterns(
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+    method: str = Query(
+        default="auto",
+        description="auto | heuristic | cluster (FUNC-PROC-005 cluster_id 연동)",
+    ),
+    min_pattern_count: int = Query(
+        default=repeat_svc.DEFAULT_MIN_PATTERN_COUNT,
+        ge=2,
+        description="반복 패턴 최소 발생 횟수",
+    ),
+):
+    """SCR-DASH-003 — 전체 부서 반복 프롬프트 비율."""
+    method, min_pattern_count = _parse_repeat_pattern_params(method, min_pattern_count)
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    result = repeat_svc.get_repeat_patterns(
+        date_range,
+        method=method,  # type: ignore[arg-type]
+        min_pattern_count=min_pattern_count,
+    )
+    return DashboardRepeatPatternsResponse(
+        period=DashboardPeriod(**result["period"]),
+        analysis_method=result["analysis_method"],
+        min_pattern_count=result["min_pattern_count"],
+        departments=[_to_department_repeat_stat(item) for item in result["departments"]],
+    )
+
+
+@app.get(
+    "/api/dashboard/departments/{department}/repeat-patterns",
+    response_model=DepartmentRepeatPatternsResponse,
+)
+def get_department_repeat_patterns(
+    department: str,
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+    method: str = Query(default="auto", description="auto | heuristic | cluster"),
+    min_pattern_count: int = Query(
+        default=repeat_svc.DEFAULT_MIN_PATTERN_COUNT,
+        ge=2,
+    ),
+):
+    """SCR-DASH-003 — 단일 부서 반복 패턴 상세."""
+    method, min_pattern_count = _parse_repeat_pattern_params(method, min_pattern_count)
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    result = repeat_svc.get_repeat_patterns(
+        date_range,
+        department=department,
+        method=method,  # type: ignore[arg-type]
+        min_pattern_count=min_pattern_count,
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"부서를 찾을 수 없습니다: {department}",
+        )
+    dept = result["departments"][0]
+    return DepartmentRepeatPatternsResponse(
+        period=DashboardPeriod(**result["period"]),
+        analysis_method=result["analysis_method"],
+        min_pattern_count=result["min_pattern_count"],
+        department=dept["department"],
+        total_requests=dept["total_requests"],
+        repeat_requests=dept["repeat_requests"],
+        repeat_ratio=dept["repeat_ratio"],
+        unique_patterns=dept["unique_patterns"],
+        patterns=[RepeatPatternItem(**item) for item in dept["patterns"]],
     )
 
 
