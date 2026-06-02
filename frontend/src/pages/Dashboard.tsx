@@ -37,14 +37,14 @@ const dummyDeptStats: DepartmentStat[] = [
 
 const Dashboard = () => {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-[30px]">
       <div className="flex flex-row justify-between">
         <h1 className="font-bold text-xxl text-black">Dashboard</h1>
         <DateFilter />
       </div>
 
       {/* KPI 카드 */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-[30px]">
         {getSummaryKpiData(dummySummary).map((kpi) => (
           <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} />
         ))}
@@ -52,22 +52,22 @@ const Dashboard = () => {
 
       {/* 부서별 업무 유형 그래프 */}
       <div className="bg-white rounded-lg p-4">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center mb-[30px]">
           <h2 className="font-bold text-lg text-black">부서별 업무 유형</h2>
         </div>
         <DepartmentWorkTypeChart data={dummyDeptStats} />
       </div>
 
       {/* 부서별 사용량 & 평균 위험도 */}
-      <div className="flex flex-row gap-6">
+      <div className="flex flex-row gap-[30px]">
         <div className="bg-white rounded-lg p-4 w-1/2">
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex justify-between items-center mb-[30px]">
             <h2 className="font-bold text-lg text-black">부서별 사용량</h2>
           </div>
           <TokenDonutChart data={dummyDeptStats} />
         </div>
         <div className="bg-white rounded-lg p-4 w-1/2">
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex justify-between items-center mb-[30px]">
             <h2 className="font-bold text-lg text-black">부서별 평균 위험도</h2>
           </div>
           <RiskBarChart data={dummyDeptStats}/>
