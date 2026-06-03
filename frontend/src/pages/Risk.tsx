@@ -3,6 +3,7 @@ import { analyzeSample } from '../api'
 import type { DepartmentStat, RiskLevel } from '../api/types'
 import KpiCard from '../components/common/KpiCard'
 import DateFilter from '../components/common/DateFilter'
+import { useSearchParams } from 'react-router-dom'
 
 const levelStyle: Record<RiskLevel, { bg: string; color: string }> = {
   Low:      { bg: 'var(--color-risk-low)', color: '#2d6a2d' },
@@ -42,6 +43,7 @@ const Risk = () => {
   const [stats, setStats] = useState<DepartmentStat[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
 
   useEffect(() => {
     analyzeSample()
@@ -57,7 +59,14 @@ const Risk = () => {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="font-bold text-xxl text-black">위험도 개요</h1>
-        <DateFilter />
+        <DateFilter 
+          onChange={(year, month) => {
+            setSearchParams((prev) => {
+              prev.set('month', `${year}-${String(month).padStart(2, '0')}`)
+              return prev
+            })
+          }}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
