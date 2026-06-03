@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { analyzeSample } from '../api'
+import { getDashboardDepartments } from '../api'
 import type { DepartmentStat, RiskLevel } from '../api/types'
 import KpiCard from '../components/common/KpiCard'
 import DateFilter from '../components/common/DateFilter'
@@ -48,12 +48,15 @@ const Risk = () => {
   const [error, setError] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
 
+  const month = searchParams.get('month') ?? undefined
+
   useEffect(() => {
-    analyzeSample()
+    setLoading(true)
+    getDashboardDepartments(month)
       .then(result => setStats(result.department_stats))
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [month])
 
   const criticalDepts = stats.filter(d => d.risk_level === 'Critical')
   const highDepts = stats.filter(d => d.risk_level === 'High' || d.risk_level === 'Critical')
