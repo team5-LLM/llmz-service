@@ -1,6 +1,10 @@
 import type { AnalysisResult, UploadHistoryListResponse, Summary, DepartmentStat, Recommendation } from './types'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL
+const DEFAULT_API_BASE_URL = 'https://llmz-team05.azurewebsites.net'
+
+const BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL?.trim() || DEFAULT_API_BASE_URL
+).replace(/\/$/, '')
 
 export async function analyzeSample(): Promise<AnalysisResult> {
   const res = await fetch(`${BASE_URL}/api/analyze-sample`)
