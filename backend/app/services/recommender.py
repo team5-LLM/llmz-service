@@ -10,18 +10,12 @@ def load_automation_mapping() -> dict:
 
 
 def match_automation_candidate(task_label: str) -> dict:
-    """FUNC-PROC-008 자동화 후보 매칭."""
+    """
+    FUNC-PROC-008 자동화 후보 매칭.
+    업무유형을 자동화 도구 후보로 변환합니다.
+    """
     mapping = load_automation_mapping()
-
-    if task_label not in mapping:
-        return mapping.get("기타", {
-            "service_name": "업무 자동화 후보 미정",
-            "expected_effect": "추가 분석이 필요합니다.",
-            "difficulty": "중",
-            "required_resources": ["Azure OpenAI"],
-        })
-
-    return mapping[task_label]
+    return mapping.get(task_label, mapping.get("기타"))
 
 
 def build_reason(
@@ -31,25 +25,60 @@ def build_reason(
     user_count: int,
     avg_risk: float,
     total_cost: float,
-) -> list[str]:
+    opportunity_score: int,
+) -> list[dict]:
+    """
+    SCR-RECO-003 추천 근거 설명(XAI).
+    수치와 계산 근거를 구조화해서 반환합니다.
+    """
     reasons = [
-        f"{department}에서 '{task_label}' 업무 비중이 {task_ratio:.1f}%로 나타났습니다.",
-        f"해당 업무유형을 사용한 사용자 수는 {user_count}명입니다.",
-        f"해당 업무유형의 총 가상 비용은 {total_cost:.2f}입니다.",
+        {
+            "factor": "업무유형 비중",
+            "value": round(task_ratio, 1),
+            "unit": "%",
+            "description": f"{department}에서 '{task_label}' 업무 비중이 {task_ratio:.1f}%로 나타났습니다.",
+        },
+        {
+            "factor": "사용자 수",
+            "value": user_count,
+            "unit": "명",
+            "description": f"해당 업무유형을 사용한 사용자 수는 {user_count}명입니다.",
+        },
+        {
+            "factor": "비용 영향",
+            "value": round(total_cost, 2),
+            "unit": "가상 비용",
+            "description": f"해당 업무유형의 총 가상 비용은 {total_cost:.2f}입니다.",
+        },
+        {
+            "factor": "Opportunity Score",
+            "value": opportunity_score,
+            "unit": "점",
+            "description": f"로그 기반 자동화 기회 점수는 {opportunity_score}점입니다.",
+        },
     ]
 
     if avg_risk <= 30:
-        reasons.append("평균 Risk Score가 Low 수준이므로 우선 자동화 후보로 검토할 수 있습니다.")
+        risk_description = "평균 Risk Score가 Low 수준이므로 우선 자동화 후보로 검토할 수 있습니다."
     elif avg_risk <= 60:
-        reasons.append("평균 Risk Score가 Medium 수준이므로 기본 마스킹 정책 적용 후 검토할 수 있습니다.")
+        risk_description = "평균 Risk Score가 Medium 수준이므로 기본 마스킹 정책 적용 후 검토할 수 있습니다."
     else:
-        reasons.append("평균 Risk Score가 높아 자동화 전에 보안 검토가 필요합니다.")
+        risk_description = "평균 Risk Score가 높아 자동화 전에 보안 검토가 필요합니다."
+
+    reasons.append({
+        "factor": "Risk Score",
+        "value": round(avg_risk, 2),
+        "unit": "점",
+        "description": risk_description,
+    })
 
     return reasons
 
 
 def build_recommendation_detail(recommendation: dict) -> dict:
-    """SCR-RECO-002 추천 상세 보기 API에서 사용할 상세 정보 생성."""
+    """
+    SCR-RECO-002 추천 상세 보기.
+    """
     return {
         "department": recommendation["department"],
         "task_label": recommendation["task_label"],

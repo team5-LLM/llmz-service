@@ -1,4 +1,6 @@
 from pathlib import Path
+from collections import defaultdict
+
 import pandas as pd
 
 from app.services.csv_loader import load_and_validate_csv
@@ -15,9 +17,68 @@ from app.services.recommender import (
     match_automation_candidate,
     build_reason,
 )
+from app.utils.log_date import log_month_key
+
+
+def build_summary_from_dataframe(adf: pd.DataFrame) -> dict:
+    if adf.empty:
+        return {
+            "total_logs": 0,
+            "departments": 0,
+            "total_tokens": 0,
+            "total_cost": 0.0,
+            "avg_risk_score": 0.0,
+        }
+    return {
+        "total_logs": int(len(adf)),
+        "departments": int(adf["department"].nunique()),
+        "total_tokens": int(adf["total_tokens"].sum()),
+        "total_cost": round(float(adf["cost"].sum()), 2),
+        "avg_risk_score": round(float(adf["risk_score"].mean()), 2),
+    }
+
+
+def build_analysis_result_from_logs(log_records: list[dict]) -> dict:
+    """prompt_logs / masked_logs 레코드 목록 → 분석 결과 dict."""
+    adf = pd.DataFrame(log_records)
+    if adf.empty:
+        return {
+            "summary": build_summary_from_dataframe(adf),
+            "department_stats": [],
+            "recommendations": [],
+            "sample_masked_logs": [],
+            "masked_logs": [],
+        }
+    return {
+        "summary": build_summary_from_dataframe(adf),
+        "department_stats": build_department_stats(adf),
+        "recommendations": build_recommendations(adf),
+        "sample_masked_logs": adf.head(20).to_dict(orient="records"),
+        "masked_logs": adf.to_dict(orient="records"),
+    }
+
+
+def split_analysis_result_by_month(result: dict) -> dict[str, dict]:
+    """
+    분석 결과를 prompt_logs.created_at 월(YYYY-MM)별로 분할.
+    업로드 시 월별 upload_id + persist 용.
+    """
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for log in result.get("masked_logs", []):
+        month = log_month_key(str(log.get("created_at", "")))
+        if month:
+            grouped[month].append(log)
+
+    return {
+        month: build_analysis_result_from_logs(logs)
+        for month, logs in sorted(grouped.items())
+    }
 
 
 def analyze_csv_file(csv_path: str | Path) -> dict:
+    """
+    CSV 기반 전체 분석 파이프라인.
+    """
     df = load_and_validate_csv(csv_path)
 
     analyzed_rows = []
@@ -38,8 +99,6 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
             "total_tokens": float(row["total_tokens"]),
             "cost": float(row["cost"]),
             "created_at": str(row["created_at"]),
-
-            # 원문은 저장하지 않고 마스킹 결과만 저장합니다.
             "masked_prompt": masking_result.masked_prompt,
 
             # FUNC-PROC-009 원문 폐기 검증
@@ -54,19 +113,7 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
         })
 
     adf = pd.DataFrame(analyzed_rows)
-
-    return {
-        "summary": {
-            "total_logs": int(len(adf)),
-            "departments": int(adf["department"].nunique()),
-            "total_tokens": int(adf["total_tokens"].sum()),
-            "total_cost": round(float(adf["cost"].sum()), 2),
-            "avg_risk_score": round(float(adf["risk_score"].mean()), 2),
-        },
-        "department_stats": build_department_stats(adf),
-        "recommendations": build_recommendations(adf),
-        "sample_masked_logs": adf.head(20).to_dict(orient="records"),
-    }
+    return build_analysis_result_from_logs(adf.to_dict(orient="records"))
 
 
 def build_department_stats(adf: pd.DataFrame) -> list[dict]:
@@ -104,6 +151,9 @@ def build_department_stats(adf: pd.DataFrame) -> list[dict]:
 
 
 def build_recommendations(adf: pd.DataFrame) -> list[dict]:
+    if adf.empty:
+        return []
+
     recommendations = []
 
     max_cost = float(adf.groupby(["department", "task_label"])["cost"].sum().max())
@@ -117,7 +167,6 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
         dept_total = len(adf[adf["department"] == dept])
         task_count = len(group)
         task_ratio = task_count / dept_total * 100
-
         total_cost = float(group["cost"].sum())
         unique_users = int(group["user_hash"].nunique())
         avg_risk = float(group["risk_score"].mean())
@@ -125,16 +174,27 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
         # FUNC-PROC-008 자동화 후보 매칭
         auto_info = match_automation_candidate(task_label)
 
+        # FUNC-PROC-007 Opportunity Score 계산
         opportunity = calculate_opportunity_score(
             frequency_ratio=task_ratio,
             repeat_score=normalize(task_count, max_count),
             cost_score=normalize(total_cost, max_cost),
             user_score=normalize(unique_users, max_users),
-            difficulty=auto_info["difficulty"],
         )
 
         # SCR-RECO-004 Risk 기반 도입 판단
         decision_info = adoption_decision(opportunity, avg_risk)
+
+        # SCR-RECO-003 추천 근거 설명
+        reason = build_reason(
+            department=dept,
+            task_label=task_label,
+            task_ratio=task_ratio,
+            user_count=unique_users,
+            avg_risk=avg_risk,
+            total_cost=total_cost,
+            opportunity_score=opportunity,
+        )
 
         recommendations.append({
             "department": dept,
@@ -150,24 +210,16 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
             "decision_level": decision_info["decision_level"],
             "decision_message": decision_info["message"],
             "required_action": decision_info["required_action"],
-            "reason": build_reason(
-                department=dept,
-                task_label=task_label,
-                task_ratio=task_ratio,
-                user_count=unique_users,
-                avg_risk=avg_risk,
-                total_cost=total_cost,
-            ),
+            "reason": reason,
         })
 
     if not recommendations:
         return []
 
-    result = []
     rdf = pd.DataFrame(recommendations)
-
+    result: list[dict] = []
     for _, group_items in rdf.groupby("department"):
-        top_items = group_items.sort_values("opportunity_score", ascending=False).head(3)
-        result.extend(top_items.to_dict(orient="records"))
+        sorted_items = group_items.sort_values("opportunity_score", ascending=False)
+        result.extend(sorted_items.to_dict(orient="records"))
 
     return sorted(result, key=lambda x: x["opportunity_score"], reverse=True)

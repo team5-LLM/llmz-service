@@ -1,6 +1,9 @@
 import re
 from dataclasses import dataclass, asdict
 
+from app.services.admin_rules import list_rules
+
+
 @dataclass
 class MaskingResult:
     masked_prompt: str
@@ -16,41 +19,68 @@ class MaskingResult:
     def to_dict(self):
         return asdict(self)
 
-EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-PHONE_RE = re.compile(r"01[016789]-\d{3,4}-\d{4}|010-0000-0000")
-SECRET_RE = re.compile(
-    r"(sk-[A-Za-z0-9_-]{8,}|API_KEY_[A-Z0-9_]+|fake-secret-token-[A-Za-z0-9_-]+|AZURE_OPENAI_KEY_SAMPLE)",
-    re.IGNORECASE,
-)
+
 CUSTOMER_RE = re.compile(r"(가상고객[A-Z가-힣]?|샘플고객[A-Z가-힣]?|테스트고객[A-Z가-힣]?|데모고객[A-Z가-힣]?)")
 
-CONFIDENTIAL_KEYWORDS = ["계약서", "위약금", "해지 조건", "NDA", "기밀", "내부회의록", "계약 조건"]
-FINANCIAL_KEYWORDS = ["매출", "비용", "급여", "정산", "견적", "영업 실적", "계약 성공률"]
-LEGAL_KEYWORDS = ["소송", "법무", "법률", "검토 의견", "약관", "컴플라이언스"]
-HR_KEYWORDS = ["인사평가", "면접 피드백", "채용", "지원자", "온보딩"]
+CONFIDENTIAL_KEYWORDS = ["계약서", "위약금", "해지 조건", "NDA", "기밀", "내부회의록", "계약 조건", "비공개", "내부자료"]
+FINANCIAL_KEYWORDS = ["매출", "비용", "급여", "정산", "견적", "영업 실적", "계약 성공률", "손익", "예산", "가격 정책"]
+LEGAL_KEYWORDS = ["소송", "법무", "법률", "검토 의견", "약관", "컴플라이언스", "분쟁"]
+HR_KEYWORDS = ["인사평가", "면접 피드백", "채용", "지원자", "온보딩", "연봉", "퇴사"]
+
 
 def contains_any(text: str, keywords: list[str]) -> bool:
     return any(keyword.lower() in text.lower() for keyword in keywords)
 
-def mask_prompt(prompt_text: str) -> MaskingResult:
-    text = prompt_text or ""
+
+def apply_admin_masking_rules(text: str) -> tuple[str, dict[str, bool]]:
+    """
+    SCR-ADMIN-001 마스킹 규칙 관리와 연동되는 마스킹 처리.
+    admin_rules.py의 인메모리 규칙을 읽어서 regex/keyword 치환을 수행합니다.
+    """
     masked = text
-    pii_detected = False
-    secret_detected = False
+    flags = {
+        "pii_detected": False,
+        "secret_detected": False,
+    }
+
+    for rule in list_rules():
+        if not rule.get("enabled", True):
+            continue
+
+        rule_type = rule.get("rule_type")
+        pattern = rule.get("pattern", "")
+        replacement = rule.get("replacement", "[MASKED]")
+        category = rule.get("category", "custom")
+
+        if not pattern:
+            continue
+
+        before = masked
+
+        if rule_type == "regex":
+            masked = re.sub(pattern, replacement, masked, flags=re.IGNORECASE)
+        elif rule_type == "keyword":
+            masked = masked.replace(pattern, replacement)
+
+        changed = before != masked
+
+        if changed and category == "pii":
+            flags["pii_detected"] = True
+        if changed and category == "secret":
+            flags["secret_detected"] = True
+
+    return masked, flags
+
+
+def mask_prompt(prompt_text: str) -> MaskingResult:
+    """
+    FUNC-PROC-009 원문 폐기 검증 전처리.
+    명확한 민감값은 마스킹하고, 기업 기밀 키워드는 flag로 탐지합니다.
+    """
+    text = prompt_text or ""
+    masked, admin_flags = apply_admin_masking_rules(text)
+
     customer_detected = False
-
-    if EMAIL_RE.search(masked):
-        pii_detected = True
-        masked = EMAIL_RE.sub("[EMAIL]", masked)
-
-    if PHONE_RE.search(masked):
-        pii_detected = True
-        masked = PHONE_RE.sub("[PHONE]", masked)
-
-    if SECRET_RE.search(masked):
-        secret_detected = True
-        masked = SECRET_RE.sub("[SECRET]", masked)
-
     if CUSTOMER_RE.search(masked):
         customer_detected = True
         masked = CUSTOMER_RE.sub("[CUSTOMER]", masked)
@@ -60,9 +90,17 @@ def mask_prompt(prompt_text: str) -> MaskingResult:
     legal_detected = contains_any(text, LEGAL_KEYWORDS)
     hr_detected = contains_any(text, HR_KEYWORDS)
 
+    pii_detected = admin_flags["pii_detected"]
+    secret_detected = admin_flags["secret_detected"]
+
     exposure_detected = any([
-        pii_detected, secret_detected, customer_detected, confidential_detected,
-        financial_detected, legal_detected, hr_detected,
+        pii_detected,
+        secret_detected,
+        customer_detected,
+        confidential_detected,
+        financial_detected,
+        legal_detected,
+        hr_detected,
     ])
 
     return MaskingResult(
