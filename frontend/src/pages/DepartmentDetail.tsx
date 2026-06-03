@@ -46,7 +46,7 @@ const DepartmentDetail = () => {
           task_distribution: (res.tasks_by_priority ?? []).map((t: { task_label: string; count: number; ratio: number }) => ({
             label: t.task_label,
             count: t.count,
-            ratio: t.ratio,
+            ratio: t.ratio / 100,  // tasks_by_priority ratio는 0~100 단위 → 0~1로 변환
           })),
         })
       })
