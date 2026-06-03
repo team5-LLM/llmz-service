@@ -5,8 +5,6 @@ import DateFilter from '../components/common/DateFilter'
 import type { DepartmentStat, Recommendation } from '../api/types'
 import RecommendationDetailList from '../components/recommendation/RecommendationDetailList'
 import InfoBox from '../components/recommendation/InfoBox'
-import RiskTable from '../components/recommendation/RiskTable'
-import RiskGradeBarChart from '../components/recommendation/RiskGradeBarChart'
 import { getDashboardDepartments, getRecommendationsByDepartment } from '../api'
 import EmptyChart from '../components/common/EmptyChart'
 
@@ -61,25 +59,6 @@ const Recommendation = () => {
           : <RecommendationDetailList data={recommendations} />
         }
       </div>
-      <div className="flex flex-row gap-[30px]">
-        <div className="bg-white rounded-lg p-4 w-1/2">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="font-bold text-lg text-black">위험도 등급</h2>
-          </div>
-          <RiskTable />
-        </div>
-        <div className="bg-white rounded-lg p-4 w-1/2">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="font-bold text-lg text-black">위험도 등급 분포</h2>
-          </div>
-          {recommendations.length === 0
-            ? <EmptyChart />
-            : <RiskGradeBarChart data={recommendations} />
-          }
-        </div>
-        
-      </div>
-
     </div>
   )
 }

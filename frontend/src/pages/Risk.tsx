@@ -4,6 +4,9 @@ import type { DepartmentStat, RiskLevel } from '../api/types'
 import KpiCard from '../components/common/KpiCard'
 import DateFilter from '../components/common/DateFilter'
 import { useSearchParams } from 'react-router-dom'
+import RiskTable from '../components/recommendation/RiskTable'
+import EmptyChart from '../components/common/EmptyChart'
+import RiskGradeBarChart, { type RiskGradeChartItem } from '../components/recommendation/RiskGradeBarChart'
 
 const levelStyle: Record<RiskLevel, { bg: string; color: string }> = {
   Low:      { bg: 'var(--color-risk-low)', color: '#2d6a2d' },
@@ -54,6 +57,13 @@ const Risk = () => {
 
   const criticalDepts = stats.filter(d => d.risk_level === 'Critical')
   const highDepts = stats.filter(d => d.risk_level === 'High' || d.risk_level === 'Critical')
+
+  const GRADES = ['Low', 'Medium', 'High', 'Critical'] as const
+  const total = stats.length || 1
+  const riskChartData: RiskGradeChartItem[] = GRADES.map((grade) => ({
+    grade,
+    ratio: Math.round((stats.filter(d => d.risk_level === grade).length / total) * 100),
+  }))
 
   return (
     <div className="flex flex-col gap-6">
@@ -124,6 +134,25 @@ const Risk = () => {
             )
           })}
         </div>
+      </div>
+
+      <div className="flex flex-row gap-[30px]">
+        <div className="bg-white rounded-lg p-4 w-1/2">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="font-bold text-lg text-black">위험도 등급</h2>
+          </div>
+          <RiskTable />
+        </div>
+        <div className="bg-white rounded-lg p-4 w-1/2">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="font-bold text-lg text-black">위험도 등급 분포</h2>
+          </div>
+          {stats.length === 0
+            ? <EmptyChart />
+            : <RiskGradeBarChart data={riskChartData} />
+          }
+        </div>
+        
       </div>
     </div>
   )
