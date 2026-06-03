@@ -26,7 +26,7 @@ export interface Recommendation {
   service_name: string
   expected_effect: string
   difficulty: string
-  required_resources: string
+  required_resources: string[]
   opportunity_score: number
   risk_score: number
   risk_level: RiskLevel
@@ -34,7 +34,7 @@ export interface Recommendation {
   decision_level: string
   decision_message: string
   required_action: string
-  reason: string
+  reason: { factor: string; value: number; unit: string; description: string }[]
 }
 
 export interface AnalysisResult {

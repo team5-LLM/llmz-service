@@ -49,13 +49,15 @@ const RecommendationDetailList = ({ data }: Props) => {
           {/* 필요 리소스 */}
           <div className="flex flex-col gap-1">
             <span className="font-bold text-md text-black">필요 리소스</span>
-            <span className="text-md text-black">{item.required_resources}</span>
+            <span className="text-md text-black">{item.required_resources.join(', ')}</span>
           </div>
 
           {/* 추천 이유 */}
           <div className="flex flex-col gap-1">
             <span className="font-bold text-md text-black">추천 이유</span>
-            <span className="text-md text-black">{item.reason}</span>
+            {item.reason.map((r, i) => (
+              <span key={i} className="text-md text-black">{r.description}</span>
+            ))}
           </div>
 
           {/* 보안 조치 */}
