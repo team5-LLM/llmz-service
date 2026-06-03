@@ -6,6 +6,9 @@ venv/
 ENV/
 .env
 .env.*
+!.env.development
+!.env.production
+!.env.example
 *.key
 secrets.json
 local_settings.py
