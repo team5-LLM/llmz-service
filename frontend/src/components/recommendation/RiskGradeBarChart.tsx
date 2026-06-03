@@ -1,29 +1,16 @@
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { COLORS, RISK_COLORS } from "../../constants/colors"
-import type { Recommendation } from "../../api/types"
 
-type Props = {
-  data: Recommendation[]
+export type RiskGradeChartItem = {
+  grade: string
+  ratio: number
 }
 
-const GRADES = ['Low', 'Medium', 'High', 'Critical'] as const
+type Props = {
+  data: RiskGradeChartItem[]
+}
 
-const RiskGradeBarChart = ({ data }: Props) => {
-  const counts = GRADES.reduce((acc, grade) => {
-    acc[grade] = 0
-    return acc
-  }, {} as Record<string, number>)
-
-  data.forEach((item) => {
-    if (item.risk_level in counts) counts[item.risk_level]++
-  })
-
-  const total = data.length || 1
-
-  const chartData = GRADES.map((grade) => ({
-    grade,
-    ratio: Math.round((counts[grade] / total) * 100),
-  }))
+const RiskGradeBarChart = ({ data: chartData }: Props) => {
 
   return (
     <ResponsiveContainer width="100%" height={300}>
