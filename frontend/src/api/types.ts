@@ -20,13 +20,21 @@ export interface Summary {
   avg_risk_score: number
 }
 
+export interface RecommendationReasonFactor {
+  factor: string
+  value: number
+  unit: string
+  description: string
+}
+
 export interface Recommendation {
   department: string
   task_label: string
   service_name: string
   expected_effect: string
   difficulty: string
-  required_resources: string
+  /** BE: string[] (Azure 리소스 목록) */
+  required_resources: string[]
   opportunity_score: number
   risk_score: number
   risk_level: RiskLevel
@@ -34,7 +42,8 @@ export interface Recommendation {
   decision_level: string
   decision_message: string
   required_action: string
-  reason: string
+  /** BE: RecommendationReasonFactor[] (XAI 근거) */
+  reason: RecommendationReasonFactor[]
 }
 
 export interface AnalysisResult {

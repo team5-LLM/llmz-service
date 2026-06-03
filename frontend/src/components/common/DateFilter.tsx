@@ -1,18 +1,31 @@
 import { useState, useRef, useEffect } from 'react'
 
 type DateFilterProps = {
+  year?: number
+  month?: number
   onChange?: (year: number, month: number) => void
 }
 
-const DateFilter = ({ onChange }: DateFilterProps) => {
+const DateFilter = ({ year: yearProp, month: monthProp, onChange }: DateFilterProps) => {
   const now = new Date()
   const currentYear = now.getFullYear()
   const currentMonth = now.getMonth() + 1
-  const [year, setYear] = useState(currentYear)
-  const [month, setMonth] = useState(currentMonth)
+  const [internalYear, setInternalYear] = useState(currentYear)
+  const [internalMonth, setInternalMonth] = useState(currentMonth)
+  const year = yearProp ?? internalYear
+  const month = monthProp ?? internalMonth
   const [open, setOpen] = useState(false)
-  const [tempYear, setTempYear] = useState(currentYear)
+  const [tempYear, setTempYear] = useState(year)
   const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setTempYear(year)
+  }, [year])
+
+  useEffect(() => {
+    if (yearProp != null) setInternalYear(yearProp)
+    if (monthProp != null) setInternalMonth(monthProp)
+  }, [yearProp, monthProp])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -25,8 +38,8 @@ const DateFilter = ({ onChange }: DateFilterProps) => {
   }, [])
 
   const handleSelect = (m: number) => {
-    setYear(tempYear)
-    setMonth(m)
+    setInternalYear(tempYear)
+    setInternalMonth(m)
     onChange?.(tempYear, m)
     setOpen(false)
   }
@@ -34,6 +47,7 @@ const DateFilter = ({ onChange }: DateFilterProps) => {
   return (
     <div className="relative" ref={ref}>
       <button
+        type="button"
         onClick={() => setOpen(!open)}
         className="flex justify-center items-center w-[136px] h-[40px] gap-2  bg-white border border-primary rounded-sm text-primary text-md font-medium cursor-pointer"
       >
@@ -43,9 +57,9 @@ const DateFilter = ({ onChange }: DateFilterProps) => {
 
       {open && (
         <div className="absolute right-0 top-full mt-1 bg-white border border-gray-100 rounded-sm shadow-lg p-4 z-50 w-[200px]">
-          {/* 연도 선택 커스텀 */}
           <div className="flex items-center justify-between mb-3">
             <button
+              type="button"
               onClick={() => setTempYear((y) => y - 1)}
               className="material-symbols-outlined text-lg text-black cursor-pointer"
             >
@@ -53,6 +67,7 @@ const DateFilter = ({ onChange }: DateFilterProps) => {
             </button>
             <span className="text-md font-medium text-black">{tempYear}년</span>
             <button
+              type="button"
               onClick={() => setTempYear((y) => y + 1)}
               disabled={tempYear >= currentYear}
               className={`material-symbols-outlined text-lg cursor-pointer ${tempYear >= currentYear ? 'text-gray-100' : 'text-black'}`}
@@ -61,13 +76,14 @@ const DateFilter = ({ onChange }: DateFilterProps) => {
             </button>
           </div>
 
-          {/* 월 선택 그리드 커스텀 */}
           <div className="grid grid-cols-4 gap-1">
             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
-              const isFuture = tempYear > currentYear || (tempYear === currentYear && m > currentMonth)
+              const isFuture =
+                tempYear > currentYear || (tempYear === currentYear && m > currentMonth)
               return (
                 <button
                   key={m}
+                  type="button"
                   onClick={() => !isFuture && handleSelect(m)}
                   disabled={isFuture}
                   className={`py-2 rounded-sm text-sm font-medium transition-colors ${

@@ -12,7 +12,7 @@ type Field = {
 const fields = (item: Recommendation): Field[] => [
   { label: '기대 효과',   value: item.expected_effect },
   { label: '구현 난이도', value: item.difficulty },
-  { label: '필요 리소스', value: item.required_resources },
+  { label: '필요 리소스', value: item.required_resources.join(', ') || '-' },
 ]
 
 const RecommendationList = ({ data }: Props) => {

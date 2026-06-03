@@ -10,18 +10,21 @@ type Props = {
 
 const DepartmentWorkTypeChart = ({ data }: Props) => {
   // 부서별 TOP 업무 유형 산출
-  const chartData = data.map((dept) => {
+  const chartData = data.flatMap((dept) => {
+    if (!dept.task_distribution?.length) return []
     const topTask = dept.task_distribution.reduce((a, b) =>
       a.ratio > b.ratio ? a : b
     )
     const percentage = Math.round(topTask.ratio * 100)
-    return {
+    return [{
       department: dept.department,
       percentage,
       color: WORK_TYPE_COLORS[topTask.label] ?? DEFAULT_COLOR,
       label: `${topTask.label} ${percentage}%`,
-    }
+    }]
   })
+
+  if (chartData.length === 0) return null
 
   return (
     // 가로 바 차트

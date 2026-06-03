@@ -12,7 +12,7 @@ const DepartmentDropdown = ({ data }: Props) => {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null) // 외부 클릭 감지 위함
 
-  const selected = searchParams.get('dept') ?? departments[0]
+  const selected = searchParams.get('dept') ?? departments[0] ?? '부서 선택'
 
   const handleSelect = (dept: string) => {
     setSearchParams((prev) => {
