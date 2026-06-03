@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
-import { analyzeSample } from '../api'
+import { getDashboardDepartments } from '../api'
 import type { DepartmentStat, RiskLevel } from '../api/types'
 import KpiCard from '../components/common/KpiCard'
 import DateFilter from '../components/common/DateFilter'
+import { useSearchParams } from 'react-router-dom'
+import RiskTable from '../components/recommendation/RiskTable'
+import EmptyChart from '../components/common/EmptyChart'
+import RiskGradeBarChart, { type RiskGradeChartItem } from '../components/recommendation/RiskGradeBarChart'
 
 const levelStyle: Record<RiskLevel, { bg: string; color: string }> = {
   Low:      { bg: 'var(--color-risk-low)', color: '#2d6a2d' },
@@ -42,22 +46,40 @@ const Risk = () => {
   const [stats, setStats] = useState<DepartmentStat[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const month = searchParams.get('month') ?? undefined
 
   useEffect(() => {
-    analyzeSample()
+    setLoading(true)
+    getDashboardDepartments(month)
       .then(result => setStats(result.department_stats))
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [month])
 
   const criticalDepts = stats.filter(d => d.risk_level === 'Critical')
   const highDepts = stats.filter(d => d.risk_level === 'High' || d.risk_level === 'Critical')
+
+  const GRADES = ['Low', 'Medium', 'High', 'Critical'] as const
+  const total = stats.length || 1
+  const riskChartData: RiskGradeChartItem[] = GRADES.map((grade) => ({
+    grade,
+    ratio: Math.round((stats.filter(d => d.risk_level === grade).length / total) * 100),
+  }))
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="font-bold text-xxl text-black">위험도 개요</h1>
-        <DateFilter />
+        <DateFilter 
+          onChange={(year, month) => {
+            setSearchParams((prev) => {
+              prev.set('month', `${year}-${String(month).padStart(2, '0')}`)
+              return prev
+            })
+          }}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -115,6 +137,25 @@ const Risk = () => {
             )
           })}
         </div>
+      </div>
+
+      <div className="flex flex-row gap-[30px]">
+        <div className="bg-white rounded-lg p-4 w-1/2">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="font-bold text-lg text-black">위험도 등급</h2>
+          </div>
+          <RiskTable />
+        </div>
+        <div className="bg-white rounded-lg p-4 w-1/2">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="font-bold text-lg text-black">위험도 등급 분포</h2>
+          </div>
+          {stats.length === 0
+            ? <EmptyChart />
+            : <RiskGradeBarChart data={riskChartData} />
+          }
+        </div>
+        
       </div>
     </div>
   )
