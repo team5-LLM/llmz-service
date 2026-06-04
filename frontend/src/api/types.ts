@@ -50,6 +50,7 @@ export interface UploadHistoryItem {
   date: string
   uploader: string
   status: '성공' | '실패' | '처리중'
+  note?: string
 }
 
 export interface ApiUploadHistoryItem {

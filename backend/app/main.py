@@ -435,12 +435,29 @@ async def upload_csv(file: UploadFile = File(...)):
     content = await file.read()
     file_hash = sha256_hex(content)
 
-    existing = history_svc.find_existing_completed_by_file_hash(file_hash)
+    try:
+        existing = history_svc.find_existing_completed_by_file_hash(file_hash)
+    except Exception as exc:
+        logger.error("파일 중복 검사 실패: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="파일 중복 검사를 수행할 수 없습니다. DB 연결·스키마를 확인하세요.",
+        ) from exc
+
     if existing is not None:
+        dup_message = "이미 처리된 파일입니다."
+        if is_sql_configured():
+            dup_doc = history_svc.create_upload(
+                filename=file.filename,
+                uploaded_by="anonymous",
+                file_content_sha256=file_hash,
+            )
+            history_svc.mark_failed(dup_doc, error_message=dup_message)
+
         raise HTTPException(
             status_code=409,
             detail={
-                "message": "이미 처리된 파일입니다.",
+                "message": dup_message,
                 "file_content_sha256": file_hash,
                 "existing_upload_id": existing.upload_ids[0],
                 "existing_upload_ids": existing.upload_ids,
