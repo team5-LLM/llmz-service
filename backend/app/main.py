@@ -17,6 +17,7 @@ from app.services.analysis_pipeline import analyze_csv_file, split_analysis_resu
 from app.services.csv_loader import CsvValidationError
 from app.services.persistence_service import persist_analysis_result
 from app.services.recommender import build_recommendation_detail
+from app.utils.datetime_display import format_datetime_kst
 from app.schemas.dashboard import (
     DashboardDepartmentsResponse,
     DashboardDepartmentDetailResponse,
@@ -626,7 +627,7 @@ def list_upload_history(
         UploadHistoryItem(
             upload_id=doc.upload_id,
             filename=doc.filename,
-            uploaded_at=doc.uploaded_at,
+            uploaded_at=format_datetime_kst(doc.uploaded_at) or doc.uploaded_at,
             uploaded_by=doc.uploaded_by,
             status=str(doc.status),
             total_rows=doc.total_rows,
@@ -676,7 +677,7 @@ def get_upload_history_detail(upload_id: str):
     return UploadHistoryDetailResponse(
         upload_id=doc.upload_id,
         filename=doc.filename,
-        uploaded_at=doc.uploaded_at,
+        uploaded_at=format_datetime_kst(doc.uploaded_at) or doc.uploaded_at,
         uploaded_by=doc.uploaded_by,
         department_scope=doc.department_scope,
         total_rows=doc.total_rows,
