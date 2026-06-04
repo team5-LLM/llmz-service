@@ -74,27 +74,162 @@ def build_reason(
 
     return reasons
 
+def build_xai_summary(recommendation: dict) -> str:
+    """
+    SCR-RECO-003 추천 근거 설명(XAI) 고도화.
+    추천 카드의 핵심 판단 근거를 한 문장으로 요약합니다.
+    """
+    department = recommendation.get("department", "해당 부서")
+    task_label = recommendation.get("task_label", "해당 업무")
+    opportunity_score = recommendation.get("opportunity_score", 0)
+    risk_score = recommendation.get("risk_score", 0)
+    risk_level = recommendation.get("risk_level", "Unknown")
+    decision_level = recommendation.get("decision_level", "")
+
+    if decision_level == "proceed":
+        return (
+            f"{department}은 '{task_label}' 업무의 자동화 기회 점수가 "
+            f"{opportunity_score}점으로 높고 Risk Level이 {risk_level} 수준이므로 "
+            f"우선 도입 후보로 판단됩니다."
+        )
+
+    if decision_level == "review":
+        return (
+            f"{department}은 '{task_label}' 업무의 자동화 가능성이 있으나 "
+            f"Risk Score가 {risk_score}점으로 확인되어 마스킹 정책과 보안 검토 후 "
+            f"추진 여부를 판단하는 것이 적절합니다."
+        )
+
+    if decision_level == "low_priority":
+        return (
+            f"{department}의 '{task_label}' 업무는 현재 로그 기준 Opportunity Score가 "
+            f"{opportunity_score}점으로 높지 않아 우선순위는 낮으며, "
+            f"추가 데이터 수집 후 재평가가 필요합니다."
+        )
+
+    if risk_level in {"High", "Critical"}:
+        return (
+            f"{department}의 '{task_label}' 업무는 Risk Level이 {risk_level}로 높아 "
+            f"자동화 도입 전 접근 통제와 보안 검토가 우선되어야 합니다."
+        )
+
+    return (
+        f"{department}의 '{task_label}' 업무는 Opportunity Score {opportunity_score}점, "
+        f"Risk Score {risk_score}점을 기준으로 자동화 후보로 산정되었습니다."
+    )
+
+
+def build_key_evidence(recommendation: dict) -> list[str]:
+    """
+    추천 근거 reason 배열을 프론트에서 바로 표시하기 좋은 문자열 목록으로 변환합니다.
+    """
+    evidence: list[str] = []
+
+    for reason in recommendation.get("reason", []):
+        factor = reason.get("factor")
+        value = reason.get("value")
+        unit = reason.get("unit", "")
+
+        if factor is None or value is None:
+            continue
+
+        evidence.append(f"{factor}: {value}{unit}")
+
+    opportunity_score = recommendation.get("opportunity_score")
+    risk_score = recommendation.get("risk_score")
+    risk_level = recommendation.get("risk_level")
+
+    if opportunity_score is not None:
+        score_text = f"Opportunity Score: {opportunity_score}점"
+        if score_text not in evidence:
+            evidence.append(score_text)
+
+    if risk_score is not None:
+        score_text = f"Risk Score: {risk_score}점"
+        if score_text not in evidence:
+            evidence.append(score_text)
+
+    if risk_level is not None:
+        evidence.append(f"Risk Level: {risk_level}")
+
+    return evidence
+
+
+def build_decision_reason(recommendation: dict) -> str:
+    """
+    decision_level과 required_action을 바탕으로 도입 판단 이유를 설명합니다.
+    """
+    decision = recommendation.get("decision", "검토 필요")
+    decision_level = recommendation.get("decision_level", "")
+    required_action = recommendation.get("required_action", "추가 검토 필요")
+
+    if decision_level == "proceed":
+        return (
+            f"{decision}: 자동화 가치가 높고 위험 수준이 낮으므로 "
+            f"{required_action}을 진행하는 것이 적절합니다."
+        )
+
+    if decision_level == "review":
+        return (
+            f"{decision}: 자동화 가능성은 있으나 위험 요소가 존재하므로 "
+            f"{required_action}이 필요합니다."
+        )
+
+    if decision_level == "hold":
+        return (
+            f"{decision}: 현재 위험 수준이 높아 즉시 도입보다는 "
+            f"{required_action}이 우선입니다."
+        )
+
+    if decision_level == "low_priority":
+        return (
+            f"{decision}: 현재 데이터 기준 자동화 효과가 제한적이므로 "
+            f"{required_action}이 적절합니다."
+        )
+
+    return f"{decision}: {required_action}"
+
+
+def enrich_recommendation_xai(recommendation: dict) -> dict:
+    """
+    추천 카드에 XAI 설명 필드를 추가합니다.
+    기존 reason 필드는 유지합니다.
+    """
+    enriched = dict(recommendation)
+    enriched["xai_summary"] = build_xai_summary(enriched)
+    enriched["key_evidence"] = build_key_evidence(enriched)
+    enriched["decision_reason"] = build_decision_reason(enriched)
+    return enriched
 
 def build_recommendation_detail(recommendation: dict) -> dict:
     """
     SCR-RECO-002 추천 상세 보기.
+    SCR-RECO-003 추천 근거 설명(XAI) 필드 포함.
     """
+    enriched = enrich_recommendation_xai(recommendation)
+
     return {
-        "department": recommendation["department"],
-        "task_label": recommendation["task_label"],
-        "service_name": recommendation["service_name"],
-        "expected_effect": recommendation["expected_effect"],
-        "difficulty": recommendation["difficulty"],
-        "required_resources": recommendation["required_resources"],
-        "opportunity_score": recommendation["opportunity_score"],
-        "risk_score": recommendation["risk_score"],
-        "risk_level": recommendation["risk_level"],
-        "decision": recommendation["decision"],
-        "decision_level": recommendation.get("decision_level"),
-        "decision_message": recommendation.get("decision_message"),
-        "required_action": recommendation.get("required_action"),
-        "reason": recommendation["reason"],
-        "implementation_guide": build_implementation_guide(recommendation),
+        "department": enriched["department"],
+        "task_label": enriched["task_label"],
+        "service_name": enriched["service_name"],
+        "expected_effect": enriched["expected_effect"],
+        "difficulty": enriched["difficulty"],
+        "required_resources": enriched["required_resources"],
+        "opportunity_score": enriched["opportunity_score"],
+        "risk_score": enriched["risk_score"],
+        "risk_level": enriched["risk_level"],
+        "decision": enriched["decision"],
+        "decision_level": enriched.get("decision_level"),
+        "decision_message": enriched.get("decision_message"),
+        "required_action": enriched.get("required_action"),
+        "reason": enriched["reason"],
+
+        # XAI 고도화 필드
+        "xai_summary": enriched["xai_summary"],
+        "key_evidence": enriched["key_evidence"],
+        "decision_reason": enriched["decision_reason"],
+
+        "implementation_guide": build_implementation_guide(enriched),
     }
 
 
