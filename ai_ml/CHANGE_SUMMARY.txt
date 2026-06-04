@@ -1,0 +1,29 @@
+AI/ML refactor change summary
+
+1. Added ai_ml/common.py
+   - get_setting / bool_setting / int_setting / float_setting
+   - azure_chat_client / chat_deployment
+   - azure_embedding_client / embedding_deployment / embed_texts_azure
+   - AZURE_OPENAI_KEY and AZURE_OPENAI_API_KEY alias support
+   - risk_level fallback
+
+2. Removed duplicated schemas
+   - SensitiveSpan, CategoryResult, PrivacyProcessResult live in pii_schema.py
+   - regex_detector.py keeps Span = SensitiveSpan alias for compatibility
+
+3. Removed duplicated Azure client creation
+   - llm_detector.py, cluster_labeler.py, recommendation_generator.py, xai_explainer.py, automation_matcher.py now use common.py
+
+4. Reduced duplicated embedding code
+   - Azure embedding call moved to common.py
+   - embedding_clusterer.py keeps TF-IDF fallback
+   - task_classifier.py keeps rule/anchor fallback
+
+5. Security-preserving changes
+   - prompt_text is not included in PrivacyProcessResult
+   - detected_spans.text is sanitized to [TYPE]
+   - persisted payload verification still checks prompt_text/raw_prompt/original_prompt/unmasked_prompt
+
+6. Stability improvements
+   - KMeans cluster count is reduced when masked duplicate vectors are fewer than requested clusters
+   - automation_matcher.py can run without external automation_mapping.json using STATIC_AUTOMATION_MAPPING fallback
