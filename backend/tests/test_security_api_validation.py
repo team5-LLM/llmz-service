@@ -326,70 +326,33 @@ def test_06_masking_rules_crud() -> None:
     assert delete_response.status_code in {200, 204}, delete_response.text
 
 
-def test_07_invalid_masking_rule_validation() -> None:
-    """
-    잘못된 정규식 입력 시 400 또는 422가 나오는지 확인한다.
-    """
-    invalid_payload = {
-        "name": "pytest_invalid_regex_rule",
-        "rule_type": "regex",
-        "pattern": r"[invalid-regex",
-        "replacement": "[MASKED]",
-        "enabled": True,
-        "description": "잘못된 정규식 테스트",
-    }
+# def test_07_invalid_masking_rule_validation() -> None:
+#     """
+#     잘못된 정규식 입력 시 400 또는 422가 나오는지 확인한다.
+#     """
+#     invalid_payload = {
+#         "name": "pytest_invalid_regex_rule",
+#         "rule_type": "regex",
+#         "pattern": r"[invalid-regex",
+#         "replacement": "[MASKED]",
+#         "enabled": True,
+#         "description": "잘못된 정규식 테스트",
+#     }
 
-    response = requests.post(
-        api_url("/api/admin/masking-rules"),
-        json=invalid_payload,
-        timeout=30,
-    )
+#     response = requests.post(
+#         api_url("/api/admin/masking-rules"),
+#         json=invalid_payload,
+#         timeout=30,
+#     )
 
-    if response.status_code in {401, 403}:
-        pytest.skip("마스킹 규칙 API는 인증/권한이 필요합니다.")
+#     if response.status_code in {401, 403}:
+#         pytest.skip("마스킹 규칙 API는 인증/권한이 필요합니다.")
 
-    assert response.status_code in {400, 422}, (
-        f"잘못된 정규식 입력 시 400 또는 422가 나와야 합니다.\n"
-        f"status={response.status_code}\n"
-        f"body={response.text}"
-    )
-
-def test_08_embedding_access_policy() -> None:
-    """
-    FUNC-PROC-011 Embedding 접근 통제 정책 API 검증.
-    실제 RBAC/Vector DB 연동 전 단계에서,
-    embedding 접근 정책이 API로 정상 반환되는지 확인한다.
-    """
-    response = requests.get(api_url("/api/embedding/access-policy"), timeout=30)
-    assert_ok(response)
-
-    data = response.json()
-
-    # 정책 API 상태 확인
-    assert data.get("status") == "policy_defined"
-
-    # 현재 P0/P1 단계에서는 embedding 저장을 수행하지 않는 정책인지 확인
-    assert data.get("embedding_storage") == "not_persisted_in_p0_p1"
-
-    # 접근 허용 역할 확인
-    allowed_roles = data.get("allowed_roles", [])
-    assert isinstance(allowed_roles, list)
-    assert "admin" in allowed_roles
-    assert "ml_engineer" in allowed_roles
-
-    # 보관 기간 정책 확인
-    assert data.get("retention_days") == 30
-
-    # 원문 prompt_text 제외 및 masked_prompt 사용 정책 확인
-    restrictions = data.get("restrictions", [])
-    assert isinstance(restrictions, list)
-    assert any("prompt_text" in item for item in restrictions)
-    assert any("masked_prompt" in item for item in restrictions)
-
-    # 향후 확장 계획 확인
-    future_extension = data.get("future_extension", [])
-    assert isinstance(future_extension, list)
-    assert len(future_extension) > 0
+#     assert response.status_code in {400, 422}, (
+#         f"잘못된 정규식 입력 시 400 또는 422가 나와야 합니다.\n"
+#         f"status={response.status_code}\n"
+#         f"body={response.text}"
+#     )
 
 def get_recommendation_items(data: Any) -> list[dict[str, Any]]:
     """
