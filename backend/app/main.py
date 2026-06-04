@@ -86,7 +86,7 @@ app.add_middleware(
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SAMPLE_CSV_PATH = PROJECT_ROOT / "data-sample" / "sample_llm_logs.csv"
+SAMPLE_CSV_PATH = PROJECT_ROOT / "data-sample" / "sample_llm_logs_5000.csv"
 
 # SCR-INPUT-004 — 허용 status 값 (§7.1)
 VALID_UPLOAD_STATUSES = frozenset({"pending", "processing", "completed", "failed"})

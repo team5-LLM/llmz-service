@@ -7,7 +7,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from ai_ml.common import azure_chat_client, bool_setting, chat_deployment
+from .common import azure_chat_client, bool_setting, chat_deployment
 
 
 @dataclass(frozen=True)

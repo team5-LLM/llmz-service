@@ -10,9 +10,9 @@ from __future__ import annotations
 import gc
 from typing import Optional
 
-from ai_ml.common import bool_setting, float_setting, int_setting
-from ai_ml.pii_schema import CategoryResult, PrivacyProcessResult, SensitiveSpan
-from ai_ml.span_utils import (
+from .common import bool_setting, float_setting, int_setting
+from .pii_schema import CategoryResult, PrivacyProcessResult, SensitiveSpan
+from .span_utils import (
     detected_types,
     llm_entities_to_spans,
     merge_overlapping_spans,
@@ -25,7 +25,7 @@ DEFAULT_MASKING_CONFIDENCE_THRESHOLD = 0.80
 
 
 def _detect_regex(prompt_text: str) -> list[SensitiveSpan]:
-    from ai_ml.regex_detector import detect_regex
+    from .regex_detector import detect_regex
 
     return normalize_spans(detect_regex(prompt_text))
 
@@ -37,7 +37,7 @@ def _detect_llm_optional(prompt_text: str) -> list[SensitiveSpan]:
         return []
 
     try:
-        from ai_ml.llm_detector import detect_llm
+        from .llm_detector import detect_llm
 
         entities = detect_llm(prompt_text)
         if not isinstance(entities, list):
@@ -48,14 +48,14 @@ def _detect_llm_optional(prompt_text: str) -> list[SensitiveSpan]:
 
 
 def _mask_text(prompt_text: str, spans: list[SensitiveSpan]) -> str:
-    from ai_ml.masking import mask_text
+    from .masking import mask_text
 
     return mask_text(prompt_text, spans)
 
 
 def _classify_task(masked_text: str) -> CategoryResult:
     try:
-        from ai_ml.task_classifier import classify_task
+        from .task_classifier import classify_task
 
         result = classify_task(masked_text)
         if isinstance(result, CategoryResult):
@@ -73,9 +73,14 @@ def _classify_task(masked_text: str) -> CategoryResult:
             confidence=float(getattr(result, "confidence", 0.50)),
             method=str(getattr(result, "method", "rule")),
         )
-    except Exception:
-        return CategoryResult(category="SEARCH_QA", confidence=0.30, method="fallback")
+    except Exception as exc:
+        print(f"[AI_ML][task_classifier fallback] {type(exc).__name__}: {exc}")
 
+        return CategoryResult(
+            category="SEARCH_QA",
+            confidence=0.30,
+            method="fallback_error",
+        )
 
 def _verify_original_disposal(persisted_payload: dict) -> tuple[bool, str]:
     """
@@ -194,9 +199,9 @@ def generate_cluster_based_recommendations(
     max_clusters_per_group: int = 8,
     max_cards: int | None = None,
 ) -> dict:
-    from ai_ml.cluster_labeler import build_cluster_profiles
-    from ai_ml.embedding_clusterer import cluster_processed_logs
-    from ai_ml.recommendation_generator import generate_recommendation_cards
+    from .cluster_labeler import build_cluster_profiles
+    from .embedding_clusterer import cluster_processed_logs
+    from .recommendation_generator import generate_recommendation_cards
 
     if max_cards is None:
         max_cards = int_setting("MAX_LLM_RECOMMENDATION_CARDS", 5)

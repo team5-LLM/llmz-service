@@ -1,8 +1,8 @@
 """탐지 span을 타입별 마스킹 토큰으로 치환."""
 from __future__ import annotations
 
-from ai_ml.pii_schema import SensitiveSpan
-from ai_ml.span_utils import merge_overlapping_spans
+from .pii_schema import SensitiveSpan
+from .span_utils import merge_overlapping_spans
 
 MASK_TOKEN_BY_TYPE = {
     "EMAIL": "[EMAIL]",

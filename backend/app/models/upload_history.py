@@ -55,6 +55,13 @@ class UploadSummary(BaseModel):
     total_cost: float = 0.0
     avg_risk_score: float = 0.0
 
+    masked_logs: int = 0
+    no_sensitive_logs: int = 0
+    rejected_logs: int = 0
+
+    cluster_count: int = 0
+    recommendation_count: int = 0
+
 
 class UploadHistoryDoc(BaseModel):
     """upload_history 테이블 1 row."""

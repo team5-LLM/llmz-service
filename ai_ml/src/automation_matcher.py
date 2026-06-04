@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ai_ml.common import azure_chat_client, chat_deployment, risk_level
+from .common import azure_chat_client, chat_deployment, risk_level
 
 _MAPPING_PATH = Path(__file__).resolve().parents[1] / "data" / "automation_mapping.json"
 
@@ -73,8 +73,51 @@ def _load_static_mapping() -> dict:
     if _MAPPING_PATH.exists():
         with open(_MAPPING_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
-    return STATIC_AUTOMATION_MAPPING
 
+    return {
+        "REPORT_WRITING": {
+            "service_name": "보고서 자동 생성기",
+            "expected_effect": "반복적인 보고서 초안 작성 시간을 줄이고 문서 품질을 표준화합니다.",
+            "difficulty": "Medium",
+            "required_resources": ["문서 템플릿", "검토 워크플로우"],
+        },
+        "CODE_GENERATION": {
+            "service_name": "개발 Copilot",
+            "expected_effect": "반복 코드 작성과 오류 분석 시간을 줄입니다.",
+            "difficulty": "Medium",
+            "required_resources": ["코드 저장소", "보안 가이드라인"],
+        },
+        "CUSTOMER_SUPPORT": {
+            "service_name": "고객 응대 Agent",
+            "expected_effect": "반복 문의 응답 시간을 줄이고 상담 품질을 표준화합니다.",
+            "difficulty": "Low",
+            "required_resources": ["FAQ", "상담 이력"],
+        },
+        "DOCUMENT_SUMMARY": {
+            "service_name": "문서 요약 Agent",
+            "expected_effect": "긴 문서의 핵심 내용을 빠르게 요약합니다.",
+            "difficulty": "Medium",
+            "required_resources": ["문서 저장소", "RAG 검색 인프라"],
+        },
+        "DATA_ANALYSIS": {
+            "service_name": "BI 분석 Agent",
+            "expected_effect": "반복적인 지표 분석과 인사이트 도출을 자동화합니다.",
+            "difficulty": "Medium",
+            "required_resources": ["정형 데이터", "대시보드 지표"],
+        },
+        "SEARCH_QA": {
+            "service_name": "사내 지식검색 챗봇",
+            "expected_effect": "반복적인 사내 지식 검색과 질의응답 시간을 줄입니다.",
+            "difficulty": "Low",
+            "required_resources": ["사내 문서", "검색 인덱스"],
+        },
+        "기타": {
+            "service_name": "AI 업무 자동화 도우미",
+            "expected_effect": "반복 업무를 자동화 후보로 분류하고 개선 기회를 탐색합니다.",
+            "difficulty": "Medium",
+            "required_resources": ["업무 로그", "운영 정책"],
+        },
+    }
 
 def match_automation_candidate_llm(
     department: str,
