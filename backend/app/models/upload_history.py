@@ -65,6 +65,7 @@ class UploadHistoryDoc(BaseModel):
     upload_id: str = Field(default_factory=lambda: str(uuid4()))
 
     filename: str
+    file_content_sha256: Optional[str] = None
     uploaded_at: str = Field(default_factory=_now_iso)
     uploaded_by: str = "anonymous"
     department_scope: str = "ALL"

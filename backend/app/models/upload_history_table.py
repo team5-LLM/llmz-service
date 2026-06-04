@@ -10,12 +10,16 @@ from app.db.sql import Base
 
 class UploadHistoryRow(Base):
     __tablename__ = "upload_history"
-    __table_args__ = (Index("ix_upload_history_uploaded_at", "uploaded_at"),)
+    __table_args__ = (
+        Index("ix_upload_history_uploaded_at", "uploaded_at"),
+        Index("ix_upload_history_file_sha256", "file_content_sha256"),
+    )
 
     upload_id: Mapped[str] = mapped_column(Unicode(36), primary_key=True)
     id: Mapped[str] = mapped_column(Unicode(36), nullable=False)
 
     filename: Mapped[str] = mapped_column(Unicode(512), nullable=False)
+    file_content_sha256: Mapped[Optional[str]] = mapped_column(Unicode(64), nullable=True)
     uploaded_at: Mapped[str] = mapped_column(Unicode(40), nullable=False)
     uploaded_by: Mapped[str] = mapped_column(Unicode(128), nullable=False, default="anonymous")
     department_scope: Mapped[str] = mapped_column(Unicode(64), nullable=False, default="ALL")
