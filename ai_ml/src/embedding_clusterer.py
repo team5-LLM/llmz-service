@@ -9,7 +9,7 @@ import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from ai_ml.common import embed_texts_azure
+from .common import embed_texts_azure
 
 
 @dataclass(frozen=True)
