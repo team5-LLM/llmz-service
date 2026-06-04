@@ -20,6 +20,71 @@ from app.services.scoring import (
 )
 from app.services.recommender import build_reason
 
+def calculate_risk_score_from_privacy_result(privacy_result: dict) -> float:
+    """
+    AI/ML PrivacyProcessResult 기준 risk score 계산.
+    detected_sensitive_types, masking_status, 원문 폐기 검증 결과를 사용한다.
+    """
+
+    weights = {
+        "EMAIL": 8,
+        "PHONE": 10,
+        "RRN": 40,
+        "CARD": 30,
+        "BUSINESS_REG_NO": 15,
+
+        "OPENAI_API_KEY": 45,
+        "AWS_ACCESS_KEY": 45,
+        "SAMPLE_API_KEY": 35,
+        "BEARER_TOKEN": 40,
+        "JWT": 40,
+        "DB_CONNECTION_STRING": 45,
+        "PASSWORD_ASSIGNMENT": 45,
+
+        "CUSTOMER_INFO": 15,
+        "VENDOR_INFO": 12,
+        "MONEY_AMOUNT": 10,
+        "FINANCIAL_KEYWORD": 15,
+        "FINANCIAL_INFO": 25,
+
+        "CONTRACT_INFO": 20,
+        "LEGAL_REVIEW": 25,
+        "INTERNAL_MEETING": 12,
+        "INTERNAL_CONFIDENTIAL": 25,
+        "COMPANY_CONFIDENTIAL": 30,
+        "INTERNAL_PROJECT": 25,
+
+        "HR_SENSITIVE": 25,
+        "SOURCE_CODE": 15,
+        "SOURCE_CODE_SECRET": 45,
+        "PERSON_NAME": 8,
+    }
+
+    detected_types = privacy_result.get("detected_sensitive_types", []) or []
+    detected_spans = privacy_result.get("detected_spans", []) or []
+
+    score = 0.0
+
+    # 유형별 민감도 가중치
+    for sensitive_type in detected_types:
+        score += weights.get(str(sensitive_type), 5)
+
+    # 탐지 개수 보정
+    score += min(len(detected_spans) * 2, 20)
+
+    # 마스킹 실패 또는 low confidence reject
+    if privacy_result.get("masking_status") == "REJECTED_LOW_CONFIDENCE":
+        score += 30
+
+    if privacy_result.get("unmasked_rejected"):
+        score += 25
+
+    # 원문 폐기 검증 실패
+    if privacy_result.get("original_disposed") is False:
+        score += 50
+
+    return round(min(score, 100.0), 2)
+
 def build_summary_from_dataframe(
     adf: pd.DataFrame,
     cluster_profiles: list[dict] | None = None,
@@ -110,7 +175,7 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
             "reject_reason": privacy_result.get("reject_reason", ""),
         }
 
-        risk_score_value = calculate_risk_score(masking_dict)
+        risk_score_value = calculate_risk_score_from_privacy_result(privacy_result)
 
         analyzed_rows.append({
             "log_id": log_id,
