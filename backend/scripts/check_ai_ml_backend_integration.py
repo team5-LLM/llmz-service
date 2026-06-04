@@ -11,9 +11,9 @@ from typing import Any
 from ai_ml.privacy_pipeline import process_prompt_privacy
 from app.services.analysis_pipeline import analyze_csv_file
 
-
+# 샘플데이터 경로명에 맞추어 변경 필요 !!
 SAMPLE_PATH = Path(
-    "/Users/woo/Documents/GitHub/llmz-service/data-sample/sample_llm_logs_5000.csv"
+    "/Users/woo/Documents/GitHub/llmz-service/data-sample/sample_llm_logs_5000_v08.csv"
 )
 
 
