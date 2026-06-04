@@ -17,7 +17,6 @@ from app.services.analysis_pipeline import analyze_csv_file, split_analysis_resu
 from app.services.csv_loader import CsvValidationError
 from app.services.persistence_service import persist_analysis_result
 from app.services.recommender import build_recommendation_detail
-from app.utils.datetime_display import format_datetime_kst
 from app.schemas.dashboard import (
     DashboardDepartmentsResponse,
     DashboardDepartmentDetailResponse,
@@ -430,7 +429,12 @@ async def upload_csv(file: UploadFile = File(...)):
         7) 응답: upload_ids[] · log_months[] (+ 하위호환 upload_id)
     """
     if not file.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="CSV 파일만 업로드할 수 있습니다.")
+        raise HTTPException(status_code=400, detail="Only CSV files are allowed.")
+
+    _ERR_DUPLICATE = "Duplicate file already processed"
+    _ERR_DEDUP_CHECK = "Cannot check duplicate file. Verify DB connection."
+    _ERR_NO_LOGS = "No parseable log rows (created_at)"
+    _ERR_ANALYSIS = "Analysis processing error"
 
     started = time.monotonic()
     content = await file.read()
@@ -442,23 +446,22 @@ async def upload_csv(file: UploadFile = File(...)):
         logger.error("파일 중복 검사 실패: %s", exc)
         raise HTTPException(
             status_code=503,
-            detail="파일 중복 검사를 수행할 수 없습니다. DB 연결·스키마를 확인하세요.",
+            detail=_ERR_DEDUP_CHECK,
         ) from exc
 
     if existing is not None:
-        dup_message = "이미 처리된 파일입니다."
         if is_sql_configured():
             dup_doc = history_svc.create_upload(
                 filename=file.filename,
                 uploaded_by="anonymous",
                 file_content_sha256=file_hash,
             )
-            history_svc.mark_failed(dup_doc, error_message=dup_message)
+            history_svc.mark_failed(dup_doc, error_message=_ERR_DUPLICATE)
 
         raise HTTPException(
             status_code=409,
             detail={
-                "message": dup_message,
+                "message": _ERR_DUPLICATE,
                 "file_content_sha256": file_hash,
                 "existing_upload_id": existing.upload_ids[0],
                 "existing_upload_ids": existing.upload_ids,
@@ -507,14 +510,8 @@ async def upload_csv(file: UploadFile = File(...)):
                 filename=file.filename,
                 uploaded_by="anonymous",
             )
-            history_svc.mark_failed(
-                history_doc,
-                error_message="created_at 파싱 가능한 로그가 없습니다.",
-            )
-            raise HTTPException(
-                status_code=400,
-                detail="created_at 파싱 가능한 로그가 없습니다.",
-            )
+            history_svc.mark_failed(history_doc, error_message=_ERR_NO_LOGS)
+            raise HTTPException(status_code=400, detail=_ERR_NO_LOGS)
 
         duration_ms = int((time.monotonic() - started) * 1000)
         upload_ids: list[str] = []
@@ -577,11 +574,8 @@ async def upload_csv(file: UploadFile = File(...)):
             filename=file.filename,
             uploaded_by="anonymous",
         )
-        history_svc.mark_failed(history_doc, error_message=str(exc))
-        raise HTTPException(
-            status_code=500,
-            detail=f"분석 처리 중 오류가 발생했습니다: {exc}",
-        )
+        history_svc.mark_failed(history_doc, error_message=_ERR_ANALYSIS)
+        raise HTTPException(status_code=500, detail=_ERR_ANALYSIS)
     finally:
         try:
             tmp_path.unlink(missing_ok=True)
@@ -627,7 +621,7 @@ def list_upload_history(
         UploadHistoryItem(
             upload_id=doc.upload_id,
             filename=doc.filename,
-            uploaded_at=format_datetime_kst(doc.uploaded_at) or doc.uploaded_at,
+            uploaded_at=doc.uploaded_at,
             uploaded_by=doc.uploaded_by,
             status=str(doc.status),
             total_rows=doc.total_rows,
@@ -677,7 +671,7 @@ def get_upload_history_detail(upload_id: str):
     return UploadHistoryDetailResponse(
         upload_id=doc.upload_id,
         filename=doc.filename,
-        uploaded_at=format_datetime_kst(doc.uploaded_at) or doc.uploaded_at,
+        uploaded_at=doc.uploaded_at,
         uploaded_by=doc.uploaded_by,
         department_scope=doc.department_scope,
         total_rows=doc.total_rows,

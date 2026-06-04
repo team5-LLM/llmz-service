@@ -19,7 +19,7 @@ export async function uploadCsv(file: File): Promise<AnalysisResult & { upload_i
   if (!res.ok) {
     if (res.status === 409) {
       const body = await res.json().catch(() => ({}))
-      const err = new Error(body?.detail?.message ?? '이미 처리된 파일입니다.')
+      const err = new Error(body?.detail?.message ?? 'Duplicate file already processed')
       ;(err as Error & { isDuplicate: boolean }).isDuplicate = true
       throw err
     }

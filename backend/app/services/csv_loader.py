@@ -28,7 +28,7 @@ def inspect_csv(csv_path: str | Path) -> dict:
     if missing:
         validation_errors.append({
             "type": "missing_columns",
-            "message": "CSV 필수 컬럼이 누락되었습니다.",
+            "message": "Missing required CSV columns.",
             "missing_columns": missing,
         })
 
@@ -53,7 +53,7 @@ def load_and_validate_csv(csv_path: str | Path) -> pd.DataFrame:
     valid, missing = validate_columns(list(df.columns))
     if not valid:
         raise CsvValidationError(
-            message=f"CSV 필수 컬럼이 누락되었습니다: {missing}",
+            message=f"CSV validation failed: missing required columns: {missing}",
             row_index=None,
             errors=[
                 {
