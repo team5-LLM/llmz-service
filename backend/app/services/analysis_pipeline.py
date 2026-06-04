@@ -335,13 +335,17 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
         avg_risk = float(group["risk_score"].mean())
 
         # FUNC-PROC-008 자동화 후보 매칭
-        auto_info = match_automation_candidate_llm(
-            department=dept,
-            task_label=task_label,
-            task_ratio=task_ratio,
-            user_count=unique_users,
-            avg_risk=avg_risk,
-        )
+        # LLM matcher를 우선 사용하고, 미배포/실패 시 JSON mapping으로 fallback
+        try:
+            auto_info = match_automation_candidate_llm(
+                department=dept,
+                task_label=task_label,
+                task_ratio=task_ratio,
+                user_count=unique_users,
+                avg_risk=avg_risk,
+            )
+        except Exception:
+            auto_info = match_automation_candidate(task_label)
 
         # FUNC-PROC-007 Opportunity Score 계산
         opportunity = calculate_opportunity_score(
