@@ -1,14 +1,34 @@
 """
 [3.2 / FUNC-PROC-002]
 masking.py
-- PII/기밀정보 마스킹
-- 탐지된 span을 [EMAIL], [API_KEY] 등으로 마스킹
-- 겹치는 span은 confidence 높은 것으로 우선 마스킹 (confidence 같으면 긴 span 우선)
-- 마스킹된 텍스트와 탐지된 entity type 목록 반환
-- 향후 LLM 탐지(@llm_detector.py)과 함께 통합되어 최종 PII 후보 선정 및 마스킹에 활용
+
+기능:
+- 탐지된 SensitiveSpan을 타입별 마스킹 토큰으로 치환
+- EMAIL → [EMAIL]
+- PHONE → [PHONE]
+- SAMPLE_API_KEY / OPENAI_API_KEY / AWS_ACCESS_KEY → [API_KEY]
+- CUSTOMER_INFO → [CUSTOMER_INFO]
+- CONTRACT_INFO → [CONTRACT_INFO]
+- HR_SENSITIVE → [HR_SENSITIVE]
+- FINANCIAL_KEYWORD → [FINANCIAL_INFO]
+- 뒤쪽 span부터 치환하여 start/end offset 깨짐 방지
+
+시스템 흐름:
+accepted_spans
+→ mask_text(prompt_text, accepted_spans)
+→ masked_text 생성
+→ 원문 prompt_text는 저장하지 않음
+
+관련 기능명세서:
+- 3.2 / FUNC-PROC-002: 프롬프트 마스킹
+- 3.9 / FUNC-PROC-009: 원문 미저장을 위한 masked_text 생성
+
+주의:
+- ai_ml 독립 모듈이므로 import는 app.services가 아니라 ai_ml 기준으로 작성해야 함
+  예: from ai_ml.regex_detector import Span
 """
 
-from app.services.regex_detector import Span
+from ai_ml.regex_detector import Span
 
 MASK_TOKEN_BY_TYPE = {
     'EMAIL': '[EMAIL]', 'PHONE': '[PHONE]', 'RRN': '[RRN]', 'CARD': '[CARD]', 'BUSINESS_REG_NO': '[BUSINESS_REG_NO]',

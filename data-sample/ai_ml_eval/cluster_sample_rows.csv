@@ -1,0 +1,241 @@
+﻿sub_cluster_id,department,category,masked_text,risk_score,risk_level
+마케팅팀_cluster_2,마케팅팀,SEARCH_QA,전환율 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘,10,Low
+마케팅팀_cluster_2,마케팅팀,SEARCH_QA,SNS 도달률 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘 테스트 문자열 [API_KEY]이 노출된 상황도 고려해줘,40,Medium
+마케팅팀_cluster_2,마케팅팀,SEARCH_QA,전환율 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘,10,Low
+마케팅팀_cluster_2,마케팅팀,SEARCH_QA,[FINANCIAL_INFO] 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘,20,Low
+마케팅팀_cluster_2,마케팅팀,SEARCH_QA,계약 성공률 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘,10,Low
+마케팅팀_cluster_1,마케팅팀,SEARCH_QA,광고 클릭률 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘,10,Low
+마케팅팀_cluster_1,마케팅팀,SEARCH_QA,"광고 클릭률 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘 가상 [FINANCIAL_INFO] [MONEY_AMOUNT], [FINANCIAL_INFO] [MONEY_AMOUNT] 기준으로 작성해줘",30,Low
+마케팅팀_cluster_1,마케팅팀,SEARCH_QA,전환율 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘,10,Low
+마케팅팀_cluster_1,마케팅팀,SEARCH_QA,SNS 도달률 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘,10,Low
+마케팅팀_cluster_1,마케팅팀,SEARCH_QA,시장 조사 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘,10,Low
+마케팅팀_cluster_7,마케팅팀,SEARCH_QA,클릭률 지표를 기준으로 다음 달 예상 리스크를 설명해줘,10,Low
+마케팅팀_cluster_7,마케팅팀,SEARCH_QA,상반기 업무 내용을 [INTERNAL_MEETING]용으로 간결하게 정리해줘,20,Low
+마케팅팀_cluster_7,마케팅팀,SEARCH_QA,시장 조사 문서에서 위험 조항과 확인 필요 항목만 추려줘 샘플 [CONTRACT_INFO] 의견과 [CONTRACT_INFO] 문구를 포함해줘,28,Low
+마케팅팀_cluster_7,마케팅팀,SEARCH_QA,최근 4주 업무 내용을 [INTERNAL_MEETING]용으로 간결하게 정리해줘 참고용 가짜 이메일: [EMAIL],38,Medium
+마케팅팀_cluster_7,마케팅팀,SEARCH_QA,첨부 문서의 주요 쟁점과 후속 조치 사항을 정리해줘 샘플 [CONTRACT_INFO] 의견과 [CONTRACT_INFO] 문구를 포함해줘,28,Low
+마케팅팀_cluster_5,마케팅팀,SEARCH_QA,시장 트렌드 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+마케팅팀_cluster_5,마케팅팀,SEARCH_QA,시장 트렌드 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+마케팅팀_cluster_5,마케팅팀,SEARCH_QA,신제품 캠페인 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+마케팅팀_cluster_5,마케팅팀,SEARCH_QA,SNS 콘텐츠 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+마케팅팀_cluster_5,마케팅팀,SEARCH_QA,고객 세그먼트 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+마케팅팀_cluster_3,마케팅팀,SEARCH_QA,"여름 프로모션 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+마케팅팀_cluster_3,마케팅팀,SEARCH_QA,"신제품 캠페인 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+마케팅팀_cluster_3,마케팅팀,SEARCH_QA,"여름 프로모션 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+마케팅팀_cluster_3,마케팅팀,SEARCH_QA,"고객 세그먼트 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+마케팅팀_cluster_3,마케팅팀,SEARCH_QA,"브랜드 리뉴얼 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+마케팅팀_cluster_0,마케팅팀,SEARCH_QA,영업팀에게 공유할 시장 트렌드 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+마케팅팀_cluster_0,마케팅팀,SEARCH_QA,영업팀에게 공유할 시장 조사 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+마케팅팀_cluster_0,마케팅팀,SEARCH_QA,영업팀에게 공유할 경쟁사 동향 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+마케팅팀_cluster_0,마케팅팀,SEARCH_QA,영업팀에게 공유할 신제품 캠페인 결과 보고서를 1페이지 분량으로 작성해줘 참고용 가짜 연락처: [PHONE],28,Low
+마케팅팀_cluster_0,마케팅팀,SEARCH_QA,영업팀에게 공유할 경쟁사 동향 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+마케팅팀_cluster_6,마케팅팀,SEARCH_QA,브랜드 리뉴얼에 사용할 간단한 공지 문구를 작성해줘,10,Low
+마케팅팀_cluster_6,마케팅팀,SEARCH_QA,여름 프로모션에 사용할 간단한 공지 문구를 작성해줘,10,Low
+마케팅팀_cluster_6,마케팅팀,SEARCH_QA,신규 대시보드에 사용할 간단한 공지 문구를 작성해줘,10,Low
+마케팅팀_cluster_6,마케팅팀,SEARCH_QA,고객 세그먼트 캠페인에 사용할 간단한 공지 문구를 작성해줘,10,Low
+마케팅팀_cluster_6,마케팅팀,SEARCH_QA,브랜드 리뉴얼에 사용할 간단한 공지 문구를 작성해줘,10,Low
+개발팀_cluster_3,개발팀,SEARCH_QA,테스트용으로 분류 모듈의 단위 테스트 코드를 만들어줘,10,Low
+개발팀_cluster_3,개발팀,SEARCH_QA,테스트용으로 마스킹 모듈의 단위 테스트 코드를 만들어줘,10,Low
+개발팀_cluster_3,개발팀,SEARCH_QA,테스트용으로 마스킹 모듈의 단위 테스트 코드를 만들어줘,10,Low
+개발팀_cluster_3,개발팀,SEARCH_QA,테스트용으로 점수 계산 모듈의 단위 테스트 코드를 만들어줘,10,Low
+개발팀_cluster_3,개발팀,SEARCH_QA,테스트용으로 분류 모듈의 단위 테스트 코드를 만들어줘 샘플 [CONTRACT_INFO]의 [CONTRACT_INFO] 조항과 [CONTRACT_INFO]을 포함해줘,28,Low
+개발팀_cluster_4,개발팀,SEARCH_QA,React에서 파일 업로드 기능을 구현하는 예시 코드를 작성해줘,10,Low
+개발팀_cluster_4,개발팀,SEARCH_QA,Django에서 점수 계산 기능을 구현하는 예시 코드를 작성해줘 참고용 가짜 연락처: [PHONE],28,Low
+개발팀_cluster_4,개발팀,SEARCH_QA,FastAPI에서 점수 계산 기능을 구현하는 예시 코드를 작성해줘 참고용 가짜 연락처: [PHONE],28,Low
+개발팀_cluster_4,개발팀,SEARCH_QA,Node.js에서 로그 조회 기능을 구현하는 예시 코드를 작성해줘,10,Low
+개발팀_cluster_4,개발팀,SEARCH_QA,FastAPI에서 로그 조회 기능을 구현하는 예시 코드를 작성해줘,10,Low
+개발팀_cluster_5,개발팀,SEARCH_QA,에러율 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘,10,Low
+개발팀_cluster_5,개발팀,SEARCH_QA,SQLAlchemy 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+개발팀_cluster_5,개발팀,SEARCH_QA,팀 내 공유용으로 FastAPI 관련 아이디어를 10개 제안해줘,10,Low
+개발팀_cluster_5,개발팀,SEARCH_QA,Azure OpenAI와 Azure AI Search의 차이를 비교해줘,10,Low
+개발팀_cluster_5,개발팀,SEARCH_QA,정책 문서의 핵심 내용을 5개 bullet로 요약해줘,10,Low
+개발팀_cluster_2,개발팀,SEARCH_QA,성능 개선 스프린트 성과 데이터를 표로 요약하고 해석해줘,10,Low
+개발팀_cluster_2,개발팀,SEARCH_QA,버그 수정 주간 성과 데이터를 표로 요약하고 해석해줘,10,Low
+개발팀_cluster_2,개발팀,SEARCH_QA,성능 개선 스프린트 성과 데이터를 표로 요약하고 해석해줘,10,Low
+개발팀_cluster_2,개발팀,SEARCH_QA,"성능 개선 스프린트 성과 데이터를 표로 요약하고 해석해줘 가상 [FINANCIAL_INFO] [MONEY_AMOUNT], [FINANCIAL_INFO] [MONEY_AMOUNT] 기준으로 작성해줘",30,Low
+개발팀_cluster_2,개발팀,SEARCH_QA,성능 개선 스프린트 성과 데이터를 표로 요약하고 해석해줘,10,Low
+개발팀_cluster_7,개발팀,SEARCH_QA,RAG 용어의 의미와 예시를 간단히 정리해줘,10,Low
+개발팀_cluster_7,개발팀,SEARCH_QA,RAG 용어의 의미와 예시를 간단히 정리해줘,10,Low
+개발팀_cluster_7,개발팀,SEARCH_QA,API Gateway 용어의 의미와 예시를 간단히 정리해줘 [CUSTOMER_INFO]와 [CUSTOMER_INFO] 사례를 포함해줘,28,Low
+개발팀_cluster_7,개발팀,SEARCH_QA,Embedding 용어의 의미와 예시를 간단히 정리해줘,10,Low
+개발팀_cluster_7,개발팀,SEARCH_QA,Azure OpenAI 용어의 의미와 예시를 간단히 정리해줘,10,Low
+개발팀_cluster_1,개발팀,SEARCH_QA,CSV 업로드 API 응답을 파싱해서 필요한 필드만 추출하는 코드를 작성해줘,10,Low
+개발팀_cluster_1,개발팀,SEARCH_QA,"사용량 통계 API 응답을 파싱해서 필요한 필드만 추출하는 코드를 작성해줘 가상 [FINANCIAL_INFO] [MONEY_AMOUNT], [FINANCIAL_INFO] [MONEY_AMOUNT] 기준으로 작성해줘",30,Low
+개발팀_cluster_1,개발팀,SEARCH_QA,CSV 업로드 API 응답을 파싱해서 필요한 필드만 추출하는 코드를 작성해줘,10,Low
+개발팀_cluster_1,개발팀,SEARCH_QA,사용량 통계 API 응답을 파싱해서 필요한 필드만 추출하는 코드를 작성해줘,10,Low
+개발팀_cluster_1,개발팀,SEARCH_QA,추천 후보 API 응답을 파싱해서 필요한 필드만 추출하는 코드를 작성해줘,10,Low
+개발팀_cluster_6,개발팀,SEARCH_QA,SQLAlchemy 관련 체크리스트를 만들어줘,10,Low
+개발팀_cluster_6,개발팀,SEARCH_QA,SQLAlchemy 관련 체크리스트를 만들어줘,10,Low
+개발팀_cluster_6,개발팀,SEARCH_QA,SQLAlchemy 관련 체크리스트를 만들어줘,10,Low
+개발팀_cluster_6,개발팀,SEARCH_QA,Blob Storage 관련 체크리스트를 만들어줘,10,Low
+개발팀_cluster_6,개발팀,SEARCH_QA,Azure SQL 관련 체크리스트를 만들어줘,10,Low
+개발팀_cluster_0,개발팀,SEARCH_QA,다음 에러 상황을 기준으로 원인과 수정 코드를 제안해줘: 500 Internal Server Error 테스트 문자열 [API_KEY]이 노출된 상황도 고려해줘,40,Medium
+개발팀_cluster_0,개발팀,SEARCH_QA,다음 에러 상황을 기준으로 원인과 수정 코드를 제안해줘: TypeError: NoneType object is not iterable 샘플 [CONTRACT_INFO]의 [CONTRACT_INFO] 조항과 [CONTRACT_INFO]을 포함해줘,28,Low
+개발팀_cluster_0,개발팀,SEARCH_QA,"다음 에러 상황을 기준으로 원인과 수정 코드를 제안해줘: 500 Internal Server Error 가상 [FINANCIAL_INFO] [MONEY_AMOUNT], [FINANCIAL_INFO] [MONEY_AMOUNT] 기준으로 작성해줘",30,Low
+개발팀_cluster_0,개발팀,SEARCH_QA,다음 에러 상황을 기준으로 원인과 수정 코드를 제안해줘: TimeoutError: request exceeded limit,10,Low
+개발팀_cluster_0,개발팀,SEARCH_QA,다음 에러 상황을 기준으로 원인과 수정 코드를 제안해줘: 500 Internal Server Error,10,Low
+고객지원팀_cluster_7,고객지원팀,SEARCH_QA,[CUSTOMER_INFO]에게 보낼 후속 안내 메일을 작성해줘 테스트 문자열 [API_KEY]이 노출된 상황도 고려해줘,58,Medium
+고객지원팀_cluster_7,고객지원팀,SEARCH_QA,이번 달 [FINANCIAL_INFO]과 [FINANCIAL_INFO] 데이터를 기반으로 핵심 인사이트를 정리해줘,20,Low
+고객지원팀_cluster_7,고객지원팀,SEARCH_QA,"다음 [INTERNAL_MEETING]을 의사결정 사항, 담당자, 일정으로 나눠 요약해줘",20,Low
+고객지원팀_cluster_7,고객지원팀,SEARCH_QA,[CUSTOMER_INFO]에게 보낼 후속 안내 메일을 작성해줘 샘플 [CONTRACT_INFO]의 [CONTRACT_INFO] 조항과 [CONTRACT_INFO]을 포함해줘,46,Medium
+고객지원팀_cluster_7,고객지원팀,SEARCH_QA,첨부 문서의 주요 쟁점과 후속 조치 사항을 정리해줘,10,Low
+고객지원팀_cluster_1,고객지원팀,SEARCH_QA,고객 문의를 바탕으로 상담사가 사용할 5문장 이내 답변을 만들어줘,10,Low
+고객지원팀_cluster_1,고객지원팀,SEARCH_QA,고객 문의를 바탕으로 상담사가 사용할 5문장 이내 답변을 만들어줘,10,Low
+고객지원팀_cluster_1,고객지원팀,SEARCH_QA,고객 문의를 바탕으로 상담사가 사용할 5문장 이내 답변을 만들어줘,10,Low
+고객지원팀_cluster_1,고객지원팀,SEARCH_QA,고객 문의를 바탕으로 상담사가 사용할 5문장 이내 답변을 만들어줘,10,Low
+고객지원팀_cluster_1,고객지원팀,SEARCH_QA,고객 문의를 바탕으로 상담사가 사용할 5문장 이내 답변을 만들어줘,10,Low
+고객지원팀_cluster_5,고객지원팀,SEARCH_QA,응답 시간 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘,10,Low
+고객지원팀_cluster_5,고객지원팀,SEARCH_QA,재문의율 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘,10,Low
+고객지원팀_cluster_5,고객지원팀,SEARCH_QA,재문의율 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘,10,Low
+고객지원팀_cluster_5,고객지원팀,SEARCH_QA,재문의율 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘 참고용 가짜 연락처: [PHONE],28,Low
+고객지원팀_cluster_5,고객지원팀,SEARCH_QA,재문의율 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘 [CUSTOMER_INFO]와 [CUSTOMER_INFO] 사례를 포함해줘,28,Low
+고객지원팀_cluster_6,고객지원팀,SEARCH_QA,배송/결제 관련 불만 고객에게 보낼 공감형 안내 문구를 작성해줘,10,Low
+고객지원팀_cluster_6,고객지원팀,SEARCH_QA,배송/결제 관련 불만 고객에게 보낼 공감형 안내 문구를 작성해줘,10,Low
+고객지원팀_cluster_6,고객지원팀,SEARCH_QA,배송/결제 관련 불만 고객에게 보낼 공감형 안내 문구를 작성해줘,10,Low
+고객지원팀_cluster_6,고객지원팀,SEARCH_QA,배송/결제 관련 불만 고객에게 보낼 공감형 안내 문구를 작성해줘,10,Low
+고객지원팀_cluster_6,고객지원팀,SEARCH_QA,배송 지연 관련 불만 고객에게 보낼 공감형 안내 문구를 작성해줘,10,Low
+고객지원팀_cluster_4,고객지원팀,SEARCH_QA,테스트 플랜 이용 중 발생한 문제에 대한 FAQ 답변을 작성해줘,10,Low
+고객지원팀_cluster_4,고객지원팀,SEARCH_QA,가상 구독 상품 이용 중 발생한 문제에 대한 FAQ 답변을 작성해줘,10,Low
+고객지원팀_cluster_4,고객지원팀,SEARCH_QA,샘플 서비스 이용 중 발생한 문제에 대한 FAQ 답변을 작성해줘,10,Low
+고객지원팀_cluster_4,고객지원팀,SEARCH_QA,가상 구독 상품 이용 중 발생한 문제에 대한 FAQ 답변을 작성해줘 참고용 가짜 이메일: [EMAIL],28,Low
+고객지원팀_cluster_4,고객지원팀,SEARCH_QA,테스트 플랜 이용 중 발생한 문제에 대한 FAQ 답변을 작성해줘 샘플 [CONTRACT_INFO]의 [CONTRACT_INFO] 조항과 [CONTRACT_INFO]을 포함해줘,28,Low
+고객지원팀_cluster_0,고객지원팀,SEARCH_QA,환불 정책 관련 체크리스트를 만들어줘,10,Low
+고객지원팀_cluster_0,고객지원팀,SEARCH_QA,환불 정책 관련 체크리스트를 만들어줘,10,Low
+고객지원팀_cluster_0,고객지원팀,SEARCH_QA,환불 정책 관련 체크리스트를 만들어줘 테스트 문자열 [API_KEY]이 노출된 상황도 고려해줘,40,Medium
+고객지원팀_cluster_0,고객지원팀,SEARCH_QA,환불 정책 관련 체크리스트를 만들어줘 참고용 가짜 이메일: [EMAIL],28,Low
+고객지원팀_cluster_0,고객지원팀,SEARCH_QA,환불 정책 관련 체크리스트를 만들어줘,10,Low
+고객지원팀_cluster_2,고객지원팀,SEARCH_QA,팀 내 공유용으로 고객 불만 응대 관련 아이디어를 10개 제안해줘 참고용 가짜 이메일: [EMAIL],28,Low
+고객지원팀_cluster_2,고객지원팀,SEARCH_QA,팀 내 공유용으로 환불 정책 관련 아이디어를 10개 제안해줘,10,Low
+고객지원팀_cluster_2,고객지원팀,SEARCH_QA,고객 불만 응대 관련 체크리스트를 만들어줘,10,Low
+고객지원팀_cluster_2,고객지원팀,SEARCH_QA,고객 불만 응대 관련 아이디어를 10개 제안해줘,10,Low
+고객지원팀_cluster_2,고객지원팀,SEARCH_QA,고객 불만 응대 관련 아이디어를 10개 제안해줘,10,Low
+고객지원팀_cluster_3,고객지원팀,SEARCH_QA,"문의 유형 분석 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+고객지원팀_cluster_3,고객지원팀,SEARCH_QA,"문의 유형 분석 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+고객지원팀_cluster_3,고객지원팀,SEARCH_QA,"문의 유형 분석 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+고객지원팀_cluster_3,고객지원팀,SEARCH_QA,"문의 유형 분석 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+고객지원팀_cluster_3,고객지원팀,SEARCH_QA,"문의 유형 분석 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+인사팀_cluster_2,인사팀,SEARCH_QA,신입사원에게 공유할 채용공고 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+인사팀_cluster_2,인사팀,SEARCH_QA,HR 리더에게 공유할 사내 교육 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+인사팀_cluster_2,인사팀,SEARCH_QA,HR 리더에게 공유할 채용공고 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+인사팀_cluster_2,인사팀,SEARCH_QA,HR 리더에게 공유할 사내 교육 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+인사팀_cluster_2,인사팀,SEARCH_QA,HR 리더에게 공유할 [HR_SENSITIVE] 결과 보고서를 1페이지 분량으로 작성해줘,28,Low
+인사팀_cluster_6,인사팀,SEARCH_QA,테스트 플랜 이용 중 발생한 문제에 대한 FAQ 답변을 작성해줘,10,Low
+인사팀_cluster_6,인사팀,SEARCH_QA,부서별 사용량 데이터를 보고 이상치와 반복 패턴을 찾아줘 가상의 [HR_SENSITIVE] 문구와 [HR_SENSITIVE] 예시를 포함해줘,28,Low
+인사팀_cluster_6,인사팀,SEARCH_QA,고객 문의를 바탕으로 상담사가 사용할 5문장 이내 답변을 만들어줘,10,Low
+인사팀_cluster_6,인사팀,SEARCH_QA,2분기 조직문화 성과를 팀장 보고용 보고서 형식으로 정리해줘,10,Low
+인사팀_cluster_6,인사팀,SEARCH_QA,[CUSTOMER_INFO] 고객의 결제 오류 문의에 대해 정중한 답변을 작성해줘 테스트 문자열 [API_KEY]이 노출된 상황도 고려해줘,58,Medium
+인사팀_cluster_7,인사팀,SEARCH_QA,채용공고 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+인사팀_cluster_7,인사팀,SEARCH_QA,채용공고 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+인사팀_cluster_7,인사팀,SEARCH_QA,교육 프로그램 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+인사팀_cluster_7,인사팀,SEARCH_QA,사내 교육 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+인사팀_cluster_7,인사팀,SEARCH_QA,사내 교육 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+인사팀_cluster_5,인사팀,SEARCH_QA,[HR_SENSITIVE] 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘,28,Low
+인사팀_cluster_5,인사팀,SEARCH_QA,[HR_SENSITIVE] 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘,28,Low
+인사팀_cluster_5,인사팀,SEARCH_QA,교육 만족도 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘 샘플 [CONTRACT_INFO] 의견과 [CONTRACT_INFO] 문구를 포함해줘,28,Low
+인사팀_cluster_5,인사팀,SEARCH_QA,[HR_SENSITIVE] 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘,28,Low
+인사팀_cluster_5,인사팀,SEARCH_QA,[HR_SENSITIVE] 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘 참고용 가짜 연락처: [PHONE],46,Medium
+인사팀_cluster_0,인사팀,SEARCH_QA,[CUSTOMER_INFO]에게 보낼 후속 안내 메일을 작성해줘,28,Low
+인사팀_cluster_0,인사팀,SEARCH_QA,[CUSTOMER_INFO]에게 보낼 후속 안내 메일을 작성해줘,28,Low
+인사팀_cluster_0,인사팀,SEARCH_QA,신입사원 온보딩 안내 메일을 친절하고 명확하게 다듬어줘,10,Low
+인사팀_cluster_0,인사팀,SEARCH_QA,신입사원 온보딩 안내 메일을 친절하고 명확하게 다듬어줘,10,Low
+인사팀_cluster_0,인사팀,SEARCH_QA,신입사원 온보딩 안내 메일을 친절하고 명확하게 다듬어줘,10,Low
+인사팀_cluster_3,인사팀,SEARCH_QA,"신입 채용 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘 [CUSTOMER_INFO]와 [CUSTOMER_INFO] 사례를 포함해줘",28,Low
+인사팀_cluster_3,인사팀,SEARCH_QA,"사내 교육 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+인사팀_cluster_3,인사팀,SEARCH_QA,"신입 채용 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+인사팀_cluster_3,인사팀,SEARCH_QA,"온보딩 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘 가상의 [HR_SENSITIVE] 문구와 [HR_SENSITIVE] 예시를 포함해줘",28,Low
+인사팀_cluster_3,인사팀,SEARCH_QA,"조직문화 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+인사팀_cluster_4,인사팀,SEARCH_QA,교육 만족도 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘,10,Low
+인사팀_cluster_4,인사팀,SEARCH_QA,조직문화 설문 결과를 바탕으로 개선 액션을 5개 제안해줘,10,Low
+인사팀_cluster_4,인사팀,SEARCH_QA,조직문화 설문 결과를 바탕으로 개선 액션을 5개 제안해줘,10,Low
+인사팀_cluster_4,인사팀,SEARCH_QA,조직문화 설문 결과를 바탕으로 개선 액션을 5개 제안해줘,10,Low
+인사팀_cluster_4,인사팀,SEARCH_QA,조직문화 설문 결과를 바탕으로 개선 액션을 5개 제안해줘,10,Low
+인사팀_cluster_1,인사팀,SEARCH_QA,사내 교육 관련 교육 자료 목차를 작성해줘,10,Low
+인사팀_cluster_1,인사팀,SEARCH_QA,채용공고 관련 교육 자료 목차를 작성해줘,10,Low
+인사팀_cluster_1,인사팀,SEARCH_QA,사내 교육 관련 교육 자료 목차를 작성해줘,10,Low
+인사팀_cluster_1,인사팀,SEARCH_QA,성과평가 관련 교육 자료 목차를 작성해줘,10,Low
+인사팀_cluster_1,인사팀,SEARCH_QA,온보딩 관련 교육 자료 목차를 작성해줘,10,Low
+영업팀_cluster_7,영업팀,SEARCH_QA,최근 4주 리드 육성 성과를 팀장 보고용 보고서 형식으로 정리해줘 테스트 문자열 [API_KEY]이 노출된 상황도 고려해줘,40,Medium
+영업팀_cluster_7,영업팀,SEARCH_QA,최근 4주 대형 고객 제안 성과를 팀장 보고용 보고서 형식으로 정리해줘,10,Low
+영업팀_cluster_7,영업팀,SEARCH_QA,이번 주 업무 내용을 [INTERNAL_MEETING]용으로 간결하게 정리해줘,20,Low
+영업팀_cluster_7,영업팀,SEARCH_QA,샘플 서비스 이용 중 발생한 문제에 대한 FAQ 답변을 작성해줘,10,Low
+영업팀_cluster_7,영업팀,SEARCH_QA,제안서의 개념을 비전공자도 이해할 수 있게 설명해줘,10,Low
+재무_기획팀_cluster_2,재무/기획팀,SEARCH_QA,2분기 [FINANCIAL_INFO]과 [FINANCIAL_INFO] 데이터를 기반으로 핵심 인사이트를 정리해줘,20,Low
+재무_기획팀_cluster_2,재무/기획팀,SEARCH_QA,이번 주 [FINANCIAL_INFO]과 [FINANCIAL_INFO] 데이터를 기반으로 핵심 인사이트를 정리해줘,20,Low
+재무_기획팀_cluster_2,재무/기획팀,SEARCH_QA,"이번 주 [FINANCIAL_INFO]과 [FINANCIAL_INFO] 데이터를 기반으로 핵심 인사이트를 정리해줘 가상 [FINANCIAL_INFO] [MONEY_AMOUNT], [FINANCIAL_INFO] [MONEY_AMOUNT] 기준으로 작성해줘",30,Low
+재무_기획팀_cluster_2,재무/기획팀,SEARCH_QA,2분기 [FINANCIAL_INFO]과 [FINANCIAL_INFO] 데이터를 기반으로 핵심 인사이트를 정리해줘,20,Low
+재무_기획팀_cluster_2,재무/기획팀,SEARCH_QA,이번 주 [FINANCIAL_INFO]과 [FINANCIAL_INFO] 데이터를 기반으로 핵심 인사이트를 정리해줘 참고용 가짜 이메일: [EMAIL],38,Medium
+영업팀_cluster_1,영업팀,SEARCH_QA,고객 미팅 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+영업팀_cluster_1,영업팀,SEARCH_QA,고객 미팅 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+영업팀_cluster_1,영업팀,SEARCH_QA,고객 미팅 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+영업팀_cluster_1,영업팀,SEARCH_QA,고객 미팅 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+영업팀_cluster_1,영업팀,SEARCH_QA,제안서 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,20,Low
+영업팀_cluster_0,영업팀,SEARCH_QA,"제안서 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+영업팀_cluster_0,영업팀,SEARCH_QA,"리드 육성 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+영업팀_cluster_0,영업팀,SEARCH_QA,"분기 영업 전략 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+영업팀_cluster_0,영업팀,SEARCH_QA,"대형 고객 제안 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+영업팀_cluster_0,영업팀,SEARCH_QA,"리드 육성 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+영업팀_cluster_2,영업팀,SEARCH_QA,영업 본부장에게 공유할 제안서 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+영업팀_cluster_2,영업팀,SEARCH_QA,영업 본부장에게 공유할 제안서 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+영업팀_cluster_2,영업팀,SEARCH_QA,영업 본부장에게 공유할 제안서 결과 보고서를 1페이지 분량으로 작성해줘 [CUSTOMER_INFO]와 [CUSTOMER_INFO] 사례를 포함해줘,28,Low
+영업팀_cluster_2,영업팀,SEARCH_QA,영업 본부장에게 공유할 제안서 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+영업팀_cluster_2,영업팀,SEARCH_QA,영업 본부장에게 공유할 제안서 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+영업팀_cluster_3,영업팀,SEARCH_QA,교육 만족도 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘,10,Low
+영업팀_cluster_3,영업팀,SEARCH_QA,"[FINANCIAL_INFO] 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘 가상 [FINANCIAL_INFO] [MONEY_AMOUNT], [FINANCIAL_INFO] [MONEY_AMOUNT] 기준으로 작성해줘",30,Low
+영업팀_cluster_3,영업팀,SEARCH_QA,[FINANCIAL_INFO] 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘,20,Low
+영업팀_cluster_3,영업팀,SEARCH_QA,계약 성공률 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘 [CUSTOMER_INFO]와 [CUSTOMER_INFO] 사례를 포함해줘,28,Low
+영업팀_cluster_3,영업팀,SEARCH_QA,[FINANCIAL_INFO] 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘,20,Low
+재무_기획팀_cluster_4,재무/기획팀,SEARCH_QA,[INTERNAL_CONFIDENTIAL] 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,38,Medium
+재무_기획팀_cluster_4,재무/기획팀,SEARCH_QA,[INTERNAL_CONFIDENTIAL] 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,38,Medium
+재무_기획팀_cluster_4,재무/기획팀,SEARCH_QA,[INTERNAL_CONFIDENTIAL] 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,38,Medium
+재무_기획팀_cluster_4,재무/기획팀,SEARCH_QA,[INTERNAL_CONFIDENTIAL] 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘,38,Medium
+재무_기획팀_cluster_4,재무/기획팀,SEARCH_QA,[INTERNAL_CONFIDENTIAL] 관련 긴 문서를 [INTERNAL_MEETING]용으로 3문단 요약해줘 참고용 가짜 이메일: [EMAIL],56,Medium
+재무_기획팀_cluster_0,재무/기획팀,SEARCH_QA,부서별 사용량 데이터를 보고 이상치와 반복 패턴을 찾아줘,10,Low
+재무_기획팀_cluster_0,재무/기획팀,SEARCH_QA,부서별 사용량 데이터를 보고 이상치와 반복 패턴을 찾아줘,10,Low
+재무_기획팀_cluster_0,재무/기획팀,SEARCH_QA,부서별 사용량 데이터를 보고 이상치와 반복 패턴을 찾아줘,10,Low
+재무_기획팀_cluster_0,재무/기획팀,SEARCH_QA,부서별 사용량 데이터를 보고 이상치와 반복 패턴을 찾아줘,10,Low
+재무_기획팀_cluster_0,재무/기획팀,SEARCH_QA,부서별 사용량 데이터를 보고 이상치와 반복 패턴을 찾아줘,10,Low
+재무_기획팀_cluster_6,재무/기획팀,SEARCH_QA,"계약 성공률 지표를 기준으로 다음 달 예상 리스크를 설명해줘 가상 [FINANCIAL_INFO] [MONEY_AMOUNT], [FINANCIAL_INFO] [MONEY_AMOUNT] 기준으로 작성해줘",30,Low
+재무_기획팀_cluster_6,재무/기획팀,SEARCH_QA,MAU 지표를 기준으로 다음 달 예상 리스크를 설명해줘,10,Low
+재무_기획팀_cluster_6,재무/기획팀,SEARCH_QA,기능 사용률 지표를 기준으로 다음 달 예상 리스크를 설명해줘,10,Low
+재무_기획팀_cluster_6,재무/기획팀,SEARCH_QA,기능 사용률 지표를 기준으로 다음 달 예상 리스크를 설명해줘,10,Low
+재무_기획팀_cluster_6,재무/기획팀,SEARCH_QA,SNS 도달률 지표를 기준으로 다음 달 예상 리스크를 설명해줘,10,Low
+재무_기획팀_cluster_5,재무/기획팀,SEARCH_QA,"캠페인 진행 상황을 배경, 주요 성과, 이슈, 다음 계획으로 나눠 보고서 초안을 작성해줘",10,Low
+재무_기획팀_cluster_5,재무/기획팀,SEARCH_QA,기능 채택률 지표를 바탕으로 월간 업무 보고서의 핵심 요약과 개선점을 작성해줘,10,Low
+재무_기획팀_cluster_5,재무/기획팀,SEARCH_QA,이번 달 [INTERNAL_CONFIDENTIAL] 성과를 팀장 보고용 보고서 형식으로 정리해줘,28,Low
+재무_기획팀_cluster_5,재무/기획팀,SEARCH_QA,Azure OpenAI와 Blob Storage의 차이를 비교해줘,10,Low
+재무_기획팀_cluster_5,재무/기획팀,SEARCH_QA,시장 조사 관련 체크리스트를 만들어줘,10,Low
+재무_기획팀_cluster_3,재무/기획팀,SEARCH_QA,개발팀에게 공유할 [INTERNAL_CONFIDENTIAL] 결과 보고서를 1페이지 분량으로 작성해줘,28,Low
+재무_기획팀_cluster_3,재무/기획팀,SEARCH_QA,개발팀에게 공유할 시장 조사 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+재무_기획팀_cluster_3,재무/기획팀,SEARCH_QA,개발팀에게 공유할 [INTERNAL_CONFIDENTIAL] 결과 보고서를 1페이지 분량으로 작성해줘 참고용 가짜 연락처: [PHONE],46,Medium
+재무_기획팀_cluster_3,재무/기획팀,SEARCH_QA,개발팀에게 공유할 [INTERNAL_CONFIDENTIAL] 결과 보고서를 1페이지 분량으로 작성해줘,28,Low
+재무_기획팀_cluster_3,재무/기획팀,SEARCH_QA,개발팀에게 공유할 시장 조사 결과 보고서를 1페이지 분량으로 작성해줘,10,Low
+재무_기획팀_cluster_7,재무/기획팀,SEARCH_QA,사용자 증가율 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘,10,Low
+재무_기획팀_cluster_7,재무/기획팀,SEARCH_QA,사용자 증가율 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘,10,Low
+재무_기획팀_cluster_7,재무/기획팀,SEARCH_QA,기능 채택률 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘,10,Low
+재무_기획팀_cluster_7,재무/기획팀,SEARCH_QA,[FINANCIAL_INFO] 집행률 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘,20,Low
+재무_기획팀_cluster_7,재무/기획팀,SEARCH_QA,[FINANCIAL_INFO] 데이터를 보고 증가/감소 원인과 개선 액션을 분석해줘 참고용 가짜 연락처: [PHONE],38,Medium
+영업팀_cluster_5,영업팀,SEARCH_QA,[CUSTOMER_INFO]에게 보낼 후속 안내 메일을 작성해줘 샘플 [CONTRACT_INFO] 의견과 [CONTRACT_INFO] 문구를 포함해줘,46,Medium
+영업팀_cluster_5,영업팀,SEARCH_QA,[CUSTOMER_INFO]에게 보낼 후속 안내 메일을 작성해줘 샘플 [CONTRACT_INFO]의 [CONTRACT_INFO] 조항과 [CONTRACT_INFO]을 포함해줘,46,Medium
+영업팀_cluster_5,영업팀,SEARCH_QA,[CUSTOMER_INFO]에게 보낼 후속 안내 메일을 작성해줘,28,Low
+영업팀_cluster_5,영업팀,SEARCH_QA,[CUSTOMER_INFO]에게 보낼 후속 안내 메일을 작성해줘 [CUSTOMER_INFO]와 [CUSTOMER_INFO] 사례를 포함해줘,28,Low
+영업팀_cluster_5,영업팀,SEARCH_QA,[CUSTOMER_INFO]에게 보낼 후속 안내 메일을 작성해줘,28,Low
+영업팀_cluster_6,영업팀,SEARCH_QA,[FINANCIAL_INFO] 안내 관련 교육 자료 목차를 작성해줘,20,Low
+영업팀_cluster_6,영업팀,SEARCH_QA,제안서 관련 교육 자료 목차를 작성해줘,10,Low
+영업팀_cluster_6,영업팀,SEARCH_QA,리드 육성 관련 교육 자료 목차를 작성해줘,10,Low
+영업팀_cluster_6,영업팀,SEARCH_QA,제안서 관련 교육 자료 목차를 작성해줘 샘플 [CONTRACT_INFO]의 [CONTRACT_INFO] 조항과 [CONTRACT_INFO]을 포함해줘,28,Low
+영업팀_cluster_6,영업팀,SEARCH_QA,영업 캠페인 관련 교육 자료 목차를 작성해줘,10,Low
+영업팀_cluster_4,영업팀,SEARCH_QA,"다음 [INTERNAL_MEETING]을 의사결정 사항, 담당자, 일정으로 나눠 요약해줘",20,Low
+영업팀_cluster_4,영업팀,SEARCH_QA,"고객 미팅 [INTERNAL_MEETING]에서 의사결정 사항, 담당자, 다음 액션을 추출해줘",20,Low
+영업팀_cluster_4,영업팀,SEARCH_QA,"고객 미팅 [INTERNAL_MEETING]에서 의사결정 사항, 담당자, 다음 액션을 추출해줘",20,Low
+영업팀_cluster_4,영업팀,SEARCH_QA,"고객 미팅 [INTERNAL_MEETING]에서 의사결정 사항, 담당자, 다음 액션을 추출해줘",20,Low
+영업팀_cluster_4,영업팀,SEARCH_QA,"고객 미팅 [INTERNAL_MEETING]에서 의사결정 사항, 담당자, 다음 액션을 추출해줘",20,Low
+마케팅팀_cluster_4,마케팅팀,SEARCH_QA,시장 조사 문서에서 핵심 내용과 후속 액션을 5개 bullet로 요약해줘,10,Low
+마케팅팀_cluster_4,마케팅팀,SEARCH_QA,시장 조사 문서에서 핵심 내용과 후속 액션을 5개 bullet로 요약해줘,10,Low
+마케팅팀_cluster_4,마케팅팀,SEARCH_QA,시장 조사 문서에서 핵심 내용과 후속 액션을 5개 bullet로 요약해줘,10,Low
+마케팅팀_cluster_4,마케팅팀,SEARCH_QA,시장 조사 문서에서 핵심 내용과 후속 액션을 5개 bullet로 요약해줘,10,Low
+마케팅팀_cluster_4,마케팅팀,SEARCH_QA,시장 조사 문서에서 핵심 내용과 후속 액션을 5개 bullet로 요약해줘,10,Low
+재무_기획팀_cluster_1,재무/기획팀,SEARCH_QA,[FINANCIAL_INFO] 대비 집행률 데이터를 표로 요약하고 다음 분기 개선 액션을 제안해줘,20,Low
+재무_기획팀_cluster_1,재무/기획팀,SEARCH_QA,[FINANCIAL_INFO] 대비 집행률 데이터를 표로 요약하고 다음 분기 개선 액션을 제안해줘,20,Low
+재무_기획팀_cluster_1,재무/기획팀,SEARCH_QA,[FINANCIAL_INFO] 대비 집행률 데이터를 표로 요약하고 다음 분기 개선 액션을 제안해줘,20,Low
+재무_기획팀_cluster_1,재무/기획팀,SEARCH_QA,[FINANCIAL_INFO] 대비 집행률 데이터를 표로 요약하고 다음 분기 개선 액션을 제안해줘,20,Low
+재무_기획팀_cluster_1,재무/기획팀,SEARCH_QA,[FINANCIAL_INFO] 대비 집행률 데이터를 표로 요약하고 다음 분기 개선 액션을 제안해줘,20,Low
