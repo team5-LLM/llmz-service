@@ -28,8 +28,8 @@ function mapApiItemsToDisplay(items: ApiUploadHistoryItem[]): UploadHistoryItem[
     uploader: item.uploaded_by,
     status: mapStatus(item.status),
     note:
-      item.status === 'failed' && item.error_message
-        ? item.error_message
+      item.status === 'failed'
+        ? item.error_message?.includes('이미 처리된') ? '중복 파일' : (item.error_message ?? '처리 실패')
         : item.status === 'completed'
           ? '—'
           : '',
