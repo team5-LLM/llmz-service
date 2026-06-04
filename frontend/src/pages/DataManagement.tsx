@@ -24,7 +24,7 @@ function mapApiItemsToDisplay(items: ApiUploadHistoryItem[]): UploadHistoryItem[
   return items.map((item, i) => ({
     id: i + 1,
     name: item.filename,
-    date: item.uploaded_at.slice(0, 10),
+    date: item.uploaded_at.slice(),
     uploader: item.uploaded_by,
     status: mapStatus(item.status),
     note:
