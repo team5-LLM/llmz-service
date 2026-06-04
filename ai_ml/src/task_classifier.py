@@ -1,15 +1,10 @@
-"""masked_text를 6개 상위 업무 유형으로 매핑."""
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from collections import Counter
 
-import numpy as np
-from sklearn.cluster import KMeans
-from sklearn.metrics.pairwise import cosine_similarity
+from .pii_schema import CategoryResult
 
-from ai_ml.common import embed_texts_azure
-from ai_ml.pii_schema import CategoryResult
 
 TASK_CATEGORIES = [
     "REPORT_WRITING",
@@ -20,211 +15,313 @@ TASK_CATEGORIES = [
     "SEARCH_QA",
 ]
 
-CATEGORY_ANCHORS = {
-    "REPORT_WRITING": [
-        "보고서 작성", "경영진 보고용 문서 작성", "월간 업무 보고서 작성", "성과 보고서 초안 작성", "팀장 보고용 요약 작성",
-    ],
+
+# 점수 기반 rule.
+# 너무 일반적인 "정리해줘", "작성해줘"는 특정 category keyword로 넣지 않는 것이 중요함.
+WEIGHTED_RULES: dict[str, list[tuple[str, float]]] = {
     "CODE_GENERATION": [
-        "Python 코드 작성", "FastAPI API 구현", "React 컴포넌트 코드 작성", "버그 원인 분석과 수정 코드 제안", "단위 테스트 코드 생성",
+        ("코드", 3.0),
+        ("API", 2.5),
+        ("FastAPI", 3.0),
+        ("React", 3.0),
+        ("Django", 3.0),
+        ("SQLAlchemy", 3.0),
+        ("Python", 3.0),
+        ("버그", 2.5),
+        ("에러", 2.5),
+        ("단위 테스트", 3.0),
+        ("구현", 2.5),
+        ("파싱", 2.0),
+        ("모듈", 1.5),
+        ("[SOURCE_CODE]", 3.0),
+        ("[SOURCE_CODE_SECRET]", 3.5),
     ],
     "CUSTOMER_SUPPORT": [
-        "고객 문의 답변 작성", "FAQ 답변 생성", "배송 지연 문의 응대", "환불 요청 고객 응대", "상담사가 사용할 답변 문구 작성",
+        ("고객 문의", 3.0),
+        ("고객의", 2.0),
+        ("상담사", 3.0),
+        ("FAQ", 3.0),
+        ("환불", 2.5),
+        ("배송", 2.5),
+        ("결제 오류", 3.0),
+        ("불만 고객", 3.0),
+        ("후속 안내", 3.0),
+        ("공감형 안내", 3.0),
+        ("정중한 답변", 2.5),
+        ("답변을 작성", 2.5),
+        ("메일을 작성", 2.0),
+        ("[CUSTOMER_INFO]", 3.0),
     ],
     "DOCUMENT_SUMMARY": [
-        "문서 핵심 내용 요약", "회의록 요약", "계약서 주요 조항 요약", "첨부 문서의 쟁점 정리", "긴 문서를 bullet로 요약",
+        ("긴 문서", 3.0),
+        ("첨부 문서", 3.0),
+        ("문서의 주요", 2.5),
+        ("회의록", 3.0),
+        ("계약서", 3.0),
+        ("주요 쟁점", 3.0),
+        ("후속 조치", 2.5),
+        ("위험 조항", 3.0),
+        ("확인 필요 항목", 3.0),
+        ("3문단 요약", 3.0),
+        ("요약해줘", 2.0),
+        ("추려줘", 2.5),
+        ("[CONTRACT_INFO]", 2.5),
+        ("[LEGAL_REVIEW]", 2.5),
+        ("[INTERNAL_MEETING]", 2.5),
     ],
     "DATA_ANALYSIS": [
-        "매출 데이터 분석", "비용 데이터 기반 인사이트 도출", "전환율 증가 감소 원인 분석", "지표 기반 개선 액션 제안", "사용량 데이터의 이상치와 반복 패턴 분석",
+        ("데이터", 2.5),
+        ("지표", 2.5),
+        ("분석", 2.5),
+        ("이상치", 3.0),
+        ("반복 패턴", 3.0),
+        ("전환율", 3.0),
+        ("클릭률", 3.0),
+        ("도달률", 3.0),
+        ("매출", 2.5),
+        ("비용", 2.5),
+        ("핵심 인사이트", 3.0),
+        ("증가/감소 원인", 3.0),
+        ("개선 액션", 3.0),
+        ("예상 리스크", 2.5),
+        ("성과 데이터", 2.5),
+        ("[FINANCIAL_INFO]", 2.5),
+        ("[MONEY_AMOUNT]", 2.0),
+    ],
+    "REPORT_WRITING": [
+        ("보고서", 3.0),
+        ("보고용", 3.0),
+        ("경영진", 2.5),
+        ("팀장", 2.5),
+        ("임원", 2.5),
+        ("1페이지", 2.5),
+        ("성과를", 2.0),
+        ("진행 상황", 2.5),
+        ("초안", 2.5),
+        ("공유할", 2.0),
+        ("결과 보고서", 3.0),
+        ("월간 업무 보고서", 3.0),
     ],
     "SEARCH_QA": [
-        "용어의 의미 설명", "개념을 비전공자도 이해할 수 있게 설명", "두 기술의 차이 비교", "사용 시 주의할 점 설명", "간단한 질문에 대한 답변",
+        ("용어", 3.0),
+        ("의미와 예시", 3.0),
+        ("의미", 2.0),
+        ("예시", 2.0),
+        ("차이", 3.0),
+        ("비교", 3.0),
+        ("주의할 점", 3.0),
+        ("설명해줘", 2.5),
+        ("알려줘", 2.5),
+        ("아이디어를 10개", 2.5),
+        ("비전공자", 2.5),
     ],
 }
 
 
-@dataclass(frozen=True)
-class ClusterResult:
-    text: str
-    cluster_id: int
-    category: str
-    confidence: float
-    method: str
-
-
-def embed_texts_rule_fallback(texts: list[str]) -> np.ndarray:
-    rows: list[list[float]] = []
-    for text in texts:
-        row: list[float] = []
-        for category in TASK_CATEGORIES:
-            score = 0.0
-            for anchor in CATEGORY_ANCHORS[category]:
-                for token in re.split(r"\s+", anchor):
-                    token = token.strip()
-                    if token and re.search(re.escape(token), text, flags=re.IGNORECASE):
-                        score += 1.0
-            row.append(score)
-
-        row.append(min(len(text) / 300.0, 3.0))
-        row.append(1.0 if "?" in text or "알려줘" in text or "설명" in text else 0.0)
-        row.append(1.0 if "보고" in text or "보고서" in text else 0.0)
-        row.append(1.0 if "코드" in text or "API" in text or "Python" in text else 0.0)
-        row.append(1.0 if "고객" in text or "문의" in text or "FAQ" in text else 0.0)
-        row.append(1.0 if "데이터" in text or "지표" in text or "분석" in text else 0.0)
-        rows.append(row)
-    return np.array(rows, dtype=np.float32)
-
-
-def embed_texts(texts: list[str]) -> tuple[np.ndarray, str]:
-    azure_vectors = embed_texts_azure(texts, required_flag="USE_LLM_TASK_CLASSIFICATION")
-    if azure_vectors is not None and azure_vectors.size > 0:
-        return azure_vectors, "azure_embedding"
-    return embed_texts_rule_fallback(texts), "rule_embedding"
-
-
-def _anchor_texts() -> tuple[list[str], list[str]]:
-    labels: list[str] = []
-    texts: list[str] = []
-    for category, anchors in CATEGORY_ANCHORS.items():
-        for anchor in anchors:
-            labels.append(category)
-            texts.append(anchor)
-    return labels, texts
-
-
-def _label_clusters_by_anchor_similarity(
-    vectors: np.ndarray,
-    cluster_ids: np.ndarray,
-    n_clusters: int,
-    embedding_method: str,
-) -> dict[int, tuple[str, float]]:
-    anchor_labels, anchor_text_list = _anchor_texts()
-    anchor_vectors, anchor_method = embed_texts(anchor_text_list)
-
-    cluster_label_map: dict[int, tuple[str, float]] = {}
-    for cluster_id in range(n_clusters):
-        member_vectors = vectors[cluster_ids == cluster_id]
-        if len(member_vectors) == 0:
-            cluster_label_map[cluster_id] = ("SEARCH_QA", 0.0)
-            continue
-
-        centroid = member_vectors.mean(axis=0, keepdims=True)
-        if centroid.shape[1] != anchor_vectors.shape[1] or embedding_method != anchor_method:
-            cluster_label_map[cluster_id] = ("SEARCH_QA", 0.30)
-            continue
-
-        similarities = cosine_similarity(centroid, anchor_vectors)[0]
-        best_index = int(np.argmax(similarities))
-        best_label = anchor_labels[best_index]
-        best_score = float(similarities[best_index])
-        cluster_label_map[cluster_id] = (best_label, round(max(0.0, min(best_score, 1.0)), 4))
-    return cluster_label_map
-
-
-def _ensure_category_coverage(
-    cluster_label_map: dict[int, tuple[str, float]],
-    n_clusters: int,
-) -> dict[int, tuple[str, float]]:
-    if n_clusters != 6:
-        return cluster_label_map
-
-    used: set[str] = set()
-    duplicated: list[int] = []
-    for cluster_id in sorted(cluster_label_map):
-        category, _ = cluster_label_map[cluster_id]
-        if category in used:
-            duplicated.append(cluster_id)
-        else:
-            used.add(category)
-
-    missing = [category for category in TASK_CATEGORIES if category not in used]
-    for cluster_id, category in zip(duplicated, missing):
-        _, old_conf = cluster_label_map[cluster_id]
-        cluster_label_map[cluster_id] = (category, min(old_conf, 0.60))
-    return cluster_label_map
-
-
-def cluster_tasks(
-    masked_texts: list[str],
-    n_clusters: int = 6,
-    force_six_demo_labels: bool = True,
-) -> list[ClusterResult]:
-    if not masked_texts:
-        return []
-
-    if len(masked_texts) < n_clusters:
-        return [
-            ClusterResult(
-                text=text,
-                cluster_id=i,
-                category=classify_task(text).category,
-                confidence=classify_task(text).confidence,
-                method="single_fallback",
-            )
-            for i, text in enumerate(masked_texts)
-        ]
-
-    vectors, embedding_method = embed_texts(masked_texts)
-    model = KMeans(n_clusters=n_clusters, random_state=42, n_init="auto")
-    cluster_ids = model.fit_predict(vectors)
-
-    cluster_label_map = _label_clusters_by_anchor_similarity(vectors, cluster_ids, n_clusters, embedding_method)
-    if force_six_demo_labels:
-        cluster_label_map = _ensure_category_coverage(cluster_label_map, n_clusters)
-
-    return [
-        ClusterResult(
-            text=text,
-            cluster_id=int(cluster_id),
-            category=cluster_label_map[int(cluster_id)][0],
-            confidence=cluster_label_map[int(cluster_id)][1],
-            method=f"{embedding_method}_kmeans",
-        )
-        for text, cluster_id in zip(masked_texts, cluster_ids)
-    ]
-
-
-RULES = [
-    ("CODE_GENERATION", ["코드", "API", "FastAPI", "React", "Django", "Node.js", "SQLAlchemy", "Python", "버그", "에러", "단위 테스트", "구현", "파싱"]),
-    ("CUSTOMER_SUPPORT", ["고객 문의", "상담", "FAQ", "환불", "배송", "결제 오류", "불만 고객", "후속 안내", "정중한 답변", "공감형 안내", "[CUSTOMER_INFO]", "[EMAIL]", "안내", "확인해줘"]),
-    ("DOCUMENT_SUMMARY", ["요약", "핵심 내용", "bullet", "회의록", "첨부 문서", "주요 쟁점", "계약서의 핵심", "추려줘"]),
-    ("DATA_ANALYSIS", ["데이터", "지표", "분석", "이상치", "반복 패턴", "전환율", "클릭률", "매출", "비용", "핵심 인사이트", "증가/감소 원인"]),
-    ("REPORT_WRITING", ["보고서", "보고용", "경영진", "팀장", "임원", "1페이지", "성과를", "진행 상황", "초안", "공유할"]),
-    ("SEARCH_QA", ["용어", "개념", "차이", "비교", "주의할 점", "설명해줘", "알려줘", "비전공자"]),
+# 동점일 때 업무성이 더 강한 유형을 우선.
+# SEARCH_QA는 제일 마지막으로 둔다.
+TIE_BREAK_PRIORITY = [
+    "CODE_GENERATION",
+    "CUSTOMER_SUPPORT",
+    "DOCUMENT_SUMMARY",
+    "REPORT_WRITING",
+    "DATA_ANALYSIS",
+    "SEARCH_QA",
 ]
 
 
-def classify_rule_fallback(masked_text: str) -> CategoryResult:
-    scores = {category: 0 for category in TASK_CATEGORIES}
-    for category, keywords in RULES:
-        for keyword in keywords:
-            if re.search(re.escape(keyword), masked_text, flags=re.IGNORECASE):
-                scores[category] += 1
+def _contains(text: str, keyword: str) -> bool:
+    return re.search(re.escape(keyword), text, flags=re.IGNORECASE) is not None
 
-    best = max(scores, key=scores.get)
-    score = scores[best]
-    if score == 0:
-        return CategoryResult("SEARCH_QA", 0.50, "rule_fallback")
-    return CategoryResult(best, round(min(0.55 + score * 0.08, 0.90), 4), "rule_fallback")
+
+def _score_text(text: str) -> Counter:
+    scores: Counter = Counter()
+
+    for category, rules in WEIGHTED_RULES.items():
+        for keyword, weight in rules:
+            if _contains(text, keyword):
+                scores[category] += weight
+
+    return scores
+
+
+def _apply_strong_pattern_overrides(text: str, scores: Counter) -> str | None:
+    """
+    특정 표현은 다른 keyword와 섞여도 category가 명확하므로 우선 적용.
+    """
+
+    # 코드/개발은 가장 명확함
+    if any(
+        _contains(text, kw)
+        for kw in [
+            "코드",
+            "FastAPI",
+            "React",
+            "Django",
+            "SQLAlchemy",
+            "Python",
+            "단위 테스트",
+            "구현하는 예시",
+            "버그",
+            "에러",
+        ]
+    ):
+        return "CODE_GENERATION"
+
+    # 고객 응대
+    if any(
+        _contains(text, kw)
+        for kw in [
+            "고객 문의",
+            "상담사",
+            "FAQ 답변",
+            "불만 고객",
+            "후속 안내",
+            "공감형 안내",
+            "정중한 답변",
+            "결제 오류 문의",
+            "[CUSTOMER_INFO]",
+        ]
+    ):
+        return "CUSTOMER_SUPPORT"
+
+    # 문서 요약
+    if any(
+        _contains(text, kw)
+        for kw in [
+            "긴 문서",
+            "첨부 문서",
+            "회의록",
+            "주요 쟁점",
+            "후속 조치",
+            "위험 조항",
+            "확인 필요 항목",
+            "3문단 요약",
+            "추려줘",
+        ]
+    ):
+        return "DOCUMENT_SUMMARY"
+
+    # 보고서 작성
+    if any(
+        _contains(text, kw)
+        for kw in [
+            "보고서",
+            "보고용",
+            "경영진",
+            "팀장",
+            "임원",
+            "1페이지",
+            "진행 상황",
+            "보고서 초안",
+            "결과 보고서",
+        ]
+    ):
+        return "REPORT_WRITING"
+
+    # 데이터 분석
+    if any(
+        _contains(text, kw)
+        for kw in [
+            "데이터",
+            "지표",
+            "이상치",
+            "반복 패턴",
+            "전환율",
+            "클릭률",
+            "도달률",
+            "매출",
+            "비용",
+            "핵심 인사이트",
+            "증가/감소 원인",
+            "개선 액션",
+            "예상 리스크",
+        ]
+    ):
+        return "DATA_ANALYSIS"
+
+    # 검색/질문
+    if any(
+        _contains(text, kw)
+        for kw in [
+            "용어",
+            "의미와 예시",
+            "차이",
+            "비교",
+            "주의할 점",
+            "설명해줘",
+            "알려줘",
+            "아이디어를 10개",
+        ]
+    ):
+        return "SEARCH_QA"
+
+    return None
+
+
+def _best_category(scores: Counter) -> tuple[str, float]:
+    if not scores:
+        return "SEARCH_QA", 0.50
+
+    max_score = max(scores.values())
+
+    if max_score <= 0:
+        return "SEARCH_QA", 0.50
+
+    candidates = {
+        category
+        for category, score in scores.items()
+        if score == max_score
+    }
+
+    for category in TIE_BREAK_PRIORITY:
+        if category in candidates:
+            return category, float(max_score)
+
+    return "SEARCH_QA", float(max_score)
+
+
+def _confidence(best_score: float, scores: Counter) -> float:
+    if best_score <= 0:
+        return 0.50
+
+    sorted_scores = sorted(scores.values(), reverse=True)
+    second_score = sorted_scores[1] if len(sorted_scores) > 1 else 0.0
+
+    margin = best_score - second_score
+
+    # base + evidence + margin
+    conf = 0.55 + min(best_score, 6.0) * 0.05 + min(max(margin, 0.0), 4.0) * 0.03
+    return round(min(conf, 0.95), 4)
 
 
 def classify_task(masked_text: str) -> CategoryResult:
-    if not masked_text:
-        return CategoryResult("SEARCH_QA", 0.30, "empty_fallback")
+    """
+    masked_text를 6개 상위 업무 유형으로 분류.
+    Azure/embedding에 의존하지 않는 deterministic rule classifier.
+    """
 
-    labels, anchor_text_list = _anchor_texts()
-    text_vector, text_method = embed_texts([masked_text])
-    anchor_vectors, anchor_method = embed_texts(anchor_text_list)
+    text = str(masked_text or "").strip()
 
-    if text_vector.shape[1] != anchor_vectors.shape[1] or text_method != anchor_method:
-        return classify_rule_fallback(masked_text)
+    if not text:
+        return CategoryResult(
+            category="SEARCH_QA",
+            confidence=0.30,
+            method="empty_fallback",
+        )
 
-    similarities = cosine_similarity(text_vector, anchor_vectors)[0]
-    best_index = int(np.argmax(similarities))
-    best_category = labels[best_index]
-    best_score = float(similarities[best_index])
+    scores = _score_text(text)
+
+    override = _apply_strong_pattern_overrides(text, scores)
+
+    if override is not None:
+        best = override
+        best_score = float(scores.get(best, 1.0))
+    else:
+        best, best_score = _best_category(scores)
 
     return CategoryResult(
-        category=best_category,
-        confidence=round(max(0.0, min(best_score, 1.0)), 4),
-        method=f"{text_method}_anchor",
+        category=best,
+        confidence=_confidence(best_score, scores),
+        method="rule_keyword_v2",
     )
