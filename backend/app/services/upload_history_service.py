@@ -83,6 +83,7 @@ def _row_to_doc(row: UploadHistoryRow) -> UploadHistoryDoc:
         validation_errors=[
             ValidationErrorItem.model_validate(item) for item in validation_errors_raw
         ],
+        file_content_sha256=row.file_content_sha256,
         blob_path=row.blob_path,
         blob_purged_at=row.blob_purged_at,
         status=row.status,
@@ -123,6 +124,7 @@ def _apply_filters(query, filters: UploadHistoryFilters):
 def _apply_doc_to_row(row: UploadHistoryRow, doc: UploadHistoryDoc) -> None:
     row.id = doc.id
     row.filename = doc.filename
+    row.file_content_sha256 = doc.file_content_sha256
     row.uploaded_at = doc.uploaded_at
     row.uploaded_by = doc.uploaded_by
     row.department_scope = doc.department_scope
@@ -168,18 +170,67 @@ def _upsert(doc: UploadHistoryDoc) -> Optional[UploadHistoryDoc]:
     finally:
         session.close()
 
+@dataclass(frozen=True)
+class ExistingFileUpload:
+    """동일 파일(SHA-256)로 이미 완료된 업로드 묶음."""
+
+    file_content_sha256: str
+    filename: str
+    uploaded_at: str
+    upload_ids: List[str]
+    log_months: List[str]
+
+
+def find_existing_completed_by_file_hash(
+    file_content_sha256: str,
+) -> Optional[ExistingFileUpload]:
+    """completed 상태인 동일 해시 업로드가 있으면 요약 반환."""
+    session = safe_session()
+    if session is None:
+        return None
+
+    try:
+        query = (
+            select(UploadHistoryRow)
+            .where(
+                UploadHistoryRow.file_content_sha256 == file_content_sha256,
+                UploadHistoryRow.status == UploadStatus.COMPLETED.value,
+            )
+            .order_by(UploadHistoryRow.department_scope.asc())
+        )
+        rows = session.scalars(query).all()
+        if not rows:
+            return None
+
+        first = rows[0]
+        return ExistingFileUpload(
+            file_content_sha256=file_content_sha256,
+            filename=first.filename,
+            uploaded_at=min(r.uploaded_at for r in rows),
+            upload_ids=[r.upload_id for r in rows],
+            log_months=[r.department_scope for r in rows],
+        )
+    except SQLAlchemyError as exc:
+        logger.warning("file hash 중복 조회 실패 — skip: %s", exc)
+        return None
+    finally:
+        session.close()
+
+
 # 업로드 시작 시점 호출
 def create_upload(
     *,
     filename: str,
     uploaded_by: str = "anonymous",
     department_scope: str = "ALL",
+    file_content_sha256: Optional[str] = None,
 ) -> UploadHistoryDoc:
     """업로드 시작 시점 호출. status=pending 으로 기록"""
     doc = UploadHistoryDoc(
         filename=filename,
         uploaded_by=uploaded_by,
         department_scope=department_scope,
+        file_content_sha256=file_content_sha256,
     )
     doc.push_status(UploadStatus.PENDING, message="업로드 수신")
     _upsert(doc)

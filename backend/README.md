@@ -140,10 +140,13 @@ SQL·Blob 없이도 `/api/analyze-sample` 등은 동작합니다. **업로드 �
 
 ## CSV 업로드 흐름 (`POST /api/upload`)
 
-1. CSV 스키마 검증 (`log_schema.REQUIRED_COLUMNS`)
-2. 마스킹 → 업무유형 분류 → Risk Score → 부서별 집계 → 추천 생성
-3. `created_at` 기준 **월(YYYY-MM)별** 분할 후 `upload_history` + SQL persist
-4. Blob 설정 시 CSV 임시 업로드 후 분석 완료 시 삭제
+1. 파일 전체 **SHA-256** — 동일 내용으로 `completed` 이력이 있으면 **409** (`이미 처리된 파일입니다.`)
+2. CSV 스키마 검증 (`log_schema.REQUIRED_COLUMNS`)
+3. 마스킹 → 업무유형 분류 → Risk Score → 부서별 집계 → 추천 생성
+4. `created_at` 기준 **월(YYYY-MM)별** 분할 후 `upload_history` + SQL persist (`file_content_sha256` 저장)
+5. Blob 설정 시 CSV 임시 업로드 후 분석 완료 시 삭제
+
+같은 파일을 다시 넣으려면 `POST /api/admin/reset-upload-data?confirm=RESET` 후 재업로드.
 
 대시보드·Risk·추천은 **`prompt_logs.created_at`이 요청 기간에 포함된 `completed` 업로드**만 집계합니다.
 

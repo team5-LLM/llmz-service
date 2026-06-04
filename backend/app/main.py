@@ -47,6 +47,7 @@ from app.services import recommendation_service as recommendation_svc
 from app.services import repeat_pattern_service as repeat_svc
 from app.services import risk_service as risk_svc
 from app.utils.date_range import InvalidDateRangeError, resolve_date_range
+from app.utils.file_hash import sha256_hex
 
 from app.schemas.log_schema import MaskingRuleCreate, MaskingRuleUpdate
 from app.services import reset_service as reset_svc
@@ -419,18 +420,35 @@ def get_risk_department_detail(
 @app.post("/api/upload")
 async def upload_csv(file: UploadFile = File(...)):
     """실행 흐름:
-        1) tempfile 저장 → analyze_csv_file → 결과 산출
-        2) masked_logs.created_at 월(YYYY-MM)별 split
-        3) 첫 upload_id 기준 Blob 1회 임시 업로드 → blob_path 기록
-        4) 월마다 upload_history INSERT (department_scope=월) + persist
-        5) 분석 완료 후 Blob 삭제 → blob_purged_at (첫 upload_id)
-        6) 응답: upload_ids[] · log_months[] (+ 하위호환 upload_id)
+        1) 파일 SHA-256 — completed 이력에 동일 해시 있으면 409
+        2) tempfile 저장 → analyze_csv_file → 결과 산출
+        3) masked_logs.created_at 월(YYYY-MM)별 split
+        4) 첫 upload_id 기준 Blob 1회 임시 업로드 → blob_path 기록
+        5) 월마다 upload_history INSERT (department_scope=월) + persist
+        6) 분석 완료 후 Blob 삭제 → blob_purged_at (첫 upload_id)
+        7) 응답: upload_ids[] · log_months[] (+ 하위호환 upload_id)
     """
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="CSV 파일만 업로드할 수 있습니다.")
 
     started = time.monotonic()
     content = await file.read()
+    file_hash = sha256_hex(content)
+
+    existing = history_svc.find_existing_completed_by_file_hash(file_hash)
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "이미 처리된 파일입니다.",
+                "file_content_sha256": file_hash,
+                "existing_upload_id": existing.upload_ids[0],
+                "existing_upload_ids": existing.upload_ids,
+                "existing_log_months": existing.log_months,
+                "existing_uploaded_at": existing.uploaded_at,
+                "existing_filename": existing.filename,
+            },
+        )
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
         tmp.write(content)
@@ -489,6 +507,7 @@ async def upload_csv(file: UploadFile = File(...)):
                 filename=file.filename,
                 uploaded_by="anonymous",
                 department_scope=month,
+                file_content_sha256=file_hash,
             )
 
             if primary_doc is None:
