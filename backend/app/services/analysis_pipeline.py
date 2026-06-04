@@ -13,9 +13,10 @@ from app.services.scoring import (
     calculate_opportunity_score,
     adoption_decision,
 )
-from app.services.recommender import build_reason
-from app.services.automation_matcher import match_automation_candidate_llm
-from app.services.xai_explainer import generate_xai_explanation
+from app.services.recommender import (
+    match_automation_candidate,
+    build_reason,
+)
 from app.utils.log_date import log_month_key
 
 
@@ -195,12 +196,6 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
             opportunity_score=opportunity,
         )
 
-        xai_explanation = generate_xai_explanation(
-            reasons=reason,
-            department=dept,
-            task_label=task_label,
-        )
-
         recommendations.append({
             "department": dept,
             "task_label": task_label,
@@ -216,7 +211,6 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
             "decision_message": decision_info["message"],
             "required_action": decision_info["required_action"],
             "reason": reason,
-            "xai_explanation": xai_explanation,
         })
 
     if not recommendations:
