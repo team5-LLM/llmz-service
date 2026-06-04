@@ -83,15 +83,29 @@ const DataManagement = () => {
 
     setUploadState('processing')
 
-    uploadCsv(picked[0])
+    const file = picked[0]
+    uploadCsv(file)
       .then(async () => {
         setUploadState('success')
         await refreshHistory()
       })
-      .catch(async (err: Error) => {
-        setUploadState('error')
-        setUploadErrorMsg(err.message)
-        await refreshHistory()
+      .catch(async (err: Error & { isDuplicate?: boolean }) => {
+        if (err.isDuplicate) {
+          setFiles(prev => [{
+            id: Date.now(),
+            name: file.name,
+            date: new Date().toISOString().slice(0, 10),
+            uploader: 'anonymous',
+            status: '실패',
+            note: '중복 파일',
+          }, ...prev])
+          setUploadState('error')
+          setUploadErrorMsg(err.message)
+        } else {
+          setUploadState('error')
+          setUploadErrorMsg(err.message)
+          await refreshHistory()
+        }
       })
   }
 

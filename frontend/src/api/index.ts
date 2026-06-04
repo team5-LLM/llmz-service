@@ -16,7 +16,15 @@ export async function uploadCsv(file: File): Promise<AnalysisResult & { upload_i
   const formData = new FormData()
   formData.append('file', file)
   const res = await fetch(`${BASE_URL}/api/upload`, { method: 'POST', body: formData })
-  if (!res.ok) throw new Error('파일 업로드에 실패했습니다.')
+  if (!res.ok) {
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}))
+      const err = new Error(body?.detail?.message ?? '이미 처리된 파일입니다.')
+      ;(err as Error & { isDuplicate: boolean }).isDuplicate = true
+      throw err
+    }
+    throw new Error('파일 업로드에 실패했습니다.')
+  }
   return res.json()
 }
 
