@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import List, Optional
 
 from sqlalchemy import func, select
@@ -29,8 +30,26 @@ from app.models.upload_history import (
     _now_iso,
 )
 from app.models.upload_history_table import UploadHistoryRow
+from app.utils.date_range import DateRange
 
 logger = logging.getLogger(__name__)
+
+# summary API by_status 집계 대상
+SUMMARY_STATUSES = (
+    UploadStatus.COMPLETED.value,
+    UploadStatus.PROCESSING.value,
+    UploadStatus.PENDING.value,
+    UploadStatus.FAILED.value,
+)
+
+
+# 이력 목록 / count / summary 공통 필터 조건
+@dataclass(frozen=True)
+class UploadHistoryFilters:
+    filename_q: Optional[str] = None
+    status: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    date_range: Optional[DateRange] = None
 
 # JSON 직렬화
 def _dump_json(value) -> str:
@@ -64,6 +83,7 @@ def _row_to_doc(row: UploadHistoryRow) -> UploadHistoryDoc:
         validation_errors=[
             ValidationErrorItem.model_validate(item) for item in validation_errors_raw
         ],
+        file_content_sha256=row.file_content_sha256,
         blob_path=row.blob_path,
         blob_purged_at=row.blob_purged_at,
         status=row.status,
@@ -80,10 +100,31 @@ def _status_value(status) -> str:
         return status.value
     return str(status)
 
+# list / count / summary — 동일 WHERE (페이징 total 일치 보장)
+def _apply_filters(query, filters: UploadHistoryFilters):
+    """공통 WHERE 조건 — list/count/summary 집계에 동일 적용."""
+    if filters.filename_q:
+        query = query.where(
+            UploadHistoryRow.filename.ilike(f"%{filters.filename_q}%")
+        )
+    if filters.status:
+        query = query.where(UploadHistoryRow.status == filters.status)
+    if filters.uploaded_by:
+        query = query.where(UploadHistoryRow.uploaded_by == filters.uploaded_by)
+    if filters.date_range:
+        query = query.where(
+            UploadHistoryRow.uploaded_at >= filters.date_range.from_date
+        ).where(
+            UploadHistoryRow.uploaded_at < filters.date_range.from_date_exclusive_upper
+        )
+    return query
+
+
 # Pydantic 모델을 데이터베이스 행에 적용
 def _apply_doc_to_row(row: UploadHistoryRow, doc: UploadHistoryDoc) -> None:
     row.id = doc.id
     row.filename = doc.filename
+    row.file_content_sha256 = doc.file_content_sha256
     row.uploaded_at = doc.uploaded_at
     row.uploaded_by = doc.uploaded_by
     row.department_scope = doc.department_scope
@@ -129,18 +170,67 @@ def _upsert(doc: UploadHistoryDoc) -> Optional[UploadHistoryDoc]:
     finally:
         session.close()
 
+@dataclass(frozen=True)
+class ExistingFileUpload:
+    """동일 파일(SHA-256)로 이미 완료된 업로드 묶음."""
+
+    file_content_sha256: str
+    filename: str
+    uploaded_at: str
+    upload_ids: List[str]
+    log_months: List[str]
+
+
+def find_existing_completed_by_file_hash(
+    file_content_sha256: str,
+) -> Optional[ExistingFileUpload]:
+    """completed 상태인 동일 해시 업로드가 있으면 요약 반환."""
+    session = safe_session()
+    if session is None:
+        return None
+
+    try:
+        query = (
+            select(UploadHistoryRow)
+            .where(
+                UploadHistoryRow.file_content_sha256 == file_content_sha256,
+                UploadHistoryRow.status == UploadStatus.COMPLETED.value,
+            )
+            .order_by(UploadHistoryRow.department_scope.asc())
+        )
+        rows = session.scalars(query).all()
+        if not rows:
+            return None
+
+        first = rows[0]
+        return ExistingFileUpload(
+            file_content_sha256=file_content_sha256,
+            filename=first.filename,
+            uploaded_at=min(r.uploaded_at for r in rows),
+            upload_ids=[r.upload_id for r in rows],
+            log_months=[r.department_scope for r in rows],
+        )
+    except SQLAlchemyError as exc:
+        logger.warning("file hash 중복 조회 실패 — skip: %s", exc)
+        return None
+    finally:
+        session.close()
+
+
 # 업로드 시작 시점 호출
 def create_upload(
     *,
     filename: str,
     uploaded_by: str = "anonymous",
     department_scope: str = "ALL",
+    file_content_sha256: Optional[str] = None,
 ) -> UploadHistoryDoc:
     """업로드 시작 시점 호출. status=pending 으로 기록"""
     doc = UploadHistoryDoc(
         filename=filename,
         uploaded_by=uploaded_by,
         department_scope=department_scope,
+        file_content_sha256=file_content_sha256,
     )
     doc.push_status(UploadStatus.PENDING, message="업로드 수신")
     _upsert(doc)
@@ -220,20 +310,24 @@ def mark_validation_failed(
 
 
 # 업로드 이력 페이징 조회
-def list_uploads(*, limit: int = 50, skip: int = 0) -> List[UploadHistoryDoc]:
+def list_uploads(
+    *,
+    limit: int = 50,
+    skip: int = 0,
+    filters: Optional[UploadHistoryFilters] = None,
+) -> List[UploadHistoryDoc]:
     """이력 페이징 조회. 최신 업로드부터 정렬"""
     session = safe_session()
     if session is None:
         logger.warning("SQL 미설정 — list_uploads 빈 결과 반환")
         return []
 
+    filters = filters or UploadHistoryFilters()
+
     try:
-        rows = session.scalars(
-            select(UploadHistoryRow)
-            .order_by(UploadHistoryRow.uploaded_at.desc())
-            .offset(int(skip))
-            .limit(int(limit))
-        ).all()
+        query = select(UploadHistoryRow).order_by(UploadHistoryRow.uploaded_at.desc())
+        query = _apply_filters(query, filters)
+        rows = session.scalars(query.offset(int(skip)).limit(int(limit))).all()
         return [_row_to_doc(row) for row in rows]
     except SQLAlchemyError as exc:
         logger.error("list_uploads 실패: %s", exc)
@@ -241,17 +335,54 @@ def list_uploads(*, limit: int = 50, skip: int = 0) -> List[UploadHistoryDoc]:
     finally:
         session.close()
 
+
 # 업로드 이력 총 개수 조회
-def count_uploads() -> int:
+def count_uploads(*, filters: Optional[UploadHistoryFilters] = None) -> int:
     session = safe_session()
     if session is None:
         return 0
 
+    filters = filters or UploadHistoryFilters()
+
     try:
-        return session.scalar(select(func.count()).select_from(UploadHistoryRow)) or 0
+        query = select(func.count()).select_from(UploadHistoryRow)
+        query = _apply_filters(query, filters)
+        return session.scalar(query) or 0
     except SQLAlchemyError as exc:
         logger.error("count_uploads 실패: %s", exc)
         return 0
+    finally:
+        session.close()
+
+
+# status별 건수 집계 (GET /api/uploads/history/summary)
+def count_uploads_by_status(
+    *, filters: Optional[UploadHistoryFilters] = None
+) -> dict[str, int]:
+    """기간·필터 내 status별 건수. summary API용."""
+    empty = {status: 0 for status in SUMMARY_STATUSES}
+    session = safe_session()
+    if session is None:
+        return empty
+
+    filters = filters or UploadHistoryFilters()
+
+    try:
+        query = (
+            select(UploadHistoryRow.status, func.count())
+            .select_from(UploadHistoryRow)
+            .group_by(UploadHistoryRow.status)
+        )
+        query = _apply_filters(query, filters)
+        rows = session.execute(query).all()
+        counts = dict(empty)
+        for status, count in rows:
+            if status in counts:
+                counts[status] = int(count)
+        return counts
+    except SQLAlchemyError as exc:
+        logger.error("count_uploads_by_status 실패: %s", exc)
+        return empty
     finally:
         session.close()
 

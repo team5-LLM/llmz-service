@@ -6,10 +6,12 @@ type DateFilterProps = {
 
 const DateFilter = ({ onChange }: DateFilterProps) => {
   const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() + 1
+  const [year, setYear] = useState(currentYear)
+  const [month, setMonth] = useState(currentMonth)
   const [open, setOpen] = useState(false)
-  const [tempYear, setTempYear] = useState(now.getFullYear())
+  const [tempYear, setTempYear] = useState(currentYear)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -52,7 +54,8 @@ const DateFilter = ({ onChange }: DateFilterProps) => {
             <span className="text-md font-medium text-black">{tempYear}년</span>
             <button
               onClick={() => setTempYear((y) => y + 1)}
-              className="material-symbols-outlined text-lg text-black cursor-pointer"
+              disabled={tempYear >= currentYear}
+              className={`material-symbols-outlined text-lg cursor-pointer ${tempYear >= currentYear ? 'text-gray-100' : 'text-black'}`}
             >
               chevron_right
             </button>
@@ -60,19 +63,25 @@ const DateFilter = ({ onChange }: DateFilterProps) => {
 
           {/* 월 선택 그리드 커스텀 */}
           <div className="grid grid-cols-4 gap-1">
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-              <button
-                key={m}
-                onClick={() => handleSelect(m)}
-                className={`py-2 rounded-sm text-sm font-medium cursor-pointer transition-colors ${
-                  tempYear === year && m === month
-                    ? 'bg-primary text-white'
-                    : 'text-black hover:bg-primary-light hover:text-primary'
-                }`}
-              >
-                {m}월
-              </button>
-            ))}
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
+              const isFuture = tempYear > currentYear || (tempYear === currentYear && m > currentMonth)
+              return (
+                <button
+                  key={m}
+                  onClick={() => !isFuture && handleSelect(m)}
+                  disabled={isFuture}
+                  className={`py-2 rounded-sm text-sm font-medium transition-colors ${
+                    isFuture
+                      ? 'text-gray-100 cursor-not-allowed'
+                      : tempYear === year && m === month
+                        ? 'bg-primary text-white cursor-pointer'
+                        : 'text-black hover:bg-primary-light hover:text-primary cursor-pointer'
+                  }`}
+                >
+                  {m}월
+                </button>
+              )
+            })}
           </div>
         </div>
       )}

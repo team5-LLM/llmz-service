@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { uploadCsv, getUploadHistory } from '../api'
-import type { UploadHistoryItem } from '../api/types'
+import type { ApiUploadHistoryItem, UploadHistoryItem } from '../api/types'
 import KpiCard from '../components/common/KpiCard'
 
 type UploadState = 'idle' | 'processing' | 'success' | 'error'
@@ -20,7 +20,21 @@ function mapStatus(apiStatus: string): UploadHistoryItem['status'] {
 const getFileExt = (filename: string) =>
   (filename.split('.').pop() ?? 'FILE').toUpperCase()
 
-let localIdCounter = 1
+function mapApiItemsToDisplay(items: ApiUploadHistoryItem[]): UploadHistoryItem[] {
+  return items.map((item, i) => ({
+    id: i + 1,
+    name: item.filename,
+    date: item.uploaded_at,
+    uploader: item.uploaded_by,
+    status: mapStatus(item.status),
+    note:
+      item.status === 'failed'
+        ? (item.error_message ?? 'Upload failed')
+        : item.status === 'completed'
+          ? '—'
+          : '',
+  }))
+}
 
 const DataManagement = () => {
   const [files, setFiles] = useState<UploadHistoryItem[]>([])
@@ -31,26 +45,19 @@ const DataManagement = () => {
   const [uploadState, setUploadState] = useState<UploadState>('idle')
   const [uploadErrorMsg, setUploadErrorMsg] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const nextIdRef = useRef(1000)
+
+  const refreshHistory = useCallback(async () => {
+    try {
+      const res = await getUploadHistory()
+      setFiles(mapApiItemsToDisplay(res.items))
+    } catch {
+      setFiles([])
+    }
+  }, [])
 
   useEffect(() => {
-    getUploadHistory()
-      .then(res => {
-        const mapped: UploadHistoryItem[] = res.items.map((item, i) => ({
-          id: i + 1,
-          name: item.filename,
-          date: item.uploaded_at.slice(0, 10),
-          uploader: item.uploaded_by,
-          status: mapStatus(item.status),
-        }))
-        setFiles(mapped)
-        nextIdRef.current = mapped.length + 1
-        localIdCounter = mapped.length + 1
-      })
-      .catch(() => {
-        setFiles([])
-      })
-  }, [])
+    void refreshHistory()
+  }, [refreshHistory])
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -68,37 +75,24 @@ const DataManagement = () => {
 
     const allCsv = picked.every(f => f.name.toLowerCase().endsWith('.csv'))
 
-    const newItems: UploadHistoryItem[] = picked.map((f, i) => ({
-      id: nextIdRef.current + i,
-      name: f.name,
-      date: new Date().toISOString().slice(0, 10),
-      uploader: 'anonymous',
-      status: '처리중',
-    }))
-    nextIdRef.current += picked.length
-    setFiles(prev => [...prev, ...newItems])
-
     if (!allCsv) {
       setUploadState('error')
       setUploadErrorMsg('CSV 파일만 업로드할 수 있습니다.')
-      const ids = new Set(newItems.map(item => item.id))
-      setFiles(prev => prev.map(f => ids.has(f.id) ? { ...f, status: '실패' } : f))
       return
     }
 
     setUploadState('processing')
 
-    uploadCsv(picked[0])
-      .then(() => {
-        const ids = new Set(newItems.map(item => item.id))
-        setFiles(prev => prev.map(f => ids.has(f.id) ? { ...f, status: '성공' } : f))
+    const file = picked[0]
+    uploadCsv(file)
+      .then(async () => {
         setUploadState('success')
+        await refreshHistory()
       })
-      .catch((err: Error) => {
-        const ids = new Set(newItems.map(item => item.id))
-        setFiles(prev => prev.map(f => ids.has(f.id) ? { ...f, status: '실패' } : f))
+      .catch(async (err: Error) => {
         setUploadState('error')
         setUploadErrorMsg(err.message)
+        await refreshHistory()
       })
   }
 
@@ -296,7 +290,7 @@ const DataManagement = () => {
                       </span>
                     </td>
                     <td className="py-3 text-sm" style={{ color: 'var(--color-gray-500)' }}>
-                      {file.status === '성공' ? '—' : ''}
+                      {file.note ?? (file.status === '성공' ? '—' : '')}
                     </td>
                   </tr>
                 )

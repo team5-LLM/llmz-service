@@ -133,6 +133,21 @@ def init_db() -> bool:
 
         _ping_database()
         Base.metadata.create_all(get_engine())
+
+        from app.db.migrate_nvarchar import migrate_varchar_to_nvarchar
+
+        migrated = migrate_varchar_to_nvarchar(get_engine())
+        if migrated:
+            logger.info("NVARCHAR 마이그레이션 완료 — %s 컬럼 변경", migrated)
+
+        from app.db.migrate_upload_history_file_hash import (
+            migrate_upload_history_file_hash,
+        )
+
+        hash_steps = migrate_upload_history_file_hash(get_engine())
+        if hash_steps:
+            logger.info("upload_history file hash 마이그레이션 — %s 단계", hash_steps)
+
         return True
     except Exception as exc:
         logger.error("init_db 실패: %s", exc)

@@ -37,6 +37,23 @@ class UploadHistoryListResponse(BaseModel):
     skip: int
 
 
+class UploadHistorySummaryByStatus(BaseModel):
+    """by_status — 0인 상태도 키 항상 포함."""
+
+    completed: int = 0
+    processing: int = 0
+    pending: int = 0
+    failed: int = 0
+
+
+# SCR-INPUT-004 상단 요약 카드 응답
+class UploadHistorySummaryResponse(BaseModel):
+    total: int
+    by_status: UploadHistorySummaryByStatus
+    from_date: str
+    to_date: str
+
+
 # Upload History Detail Response Model
 class UploadHistoryDetailResponse(BaseModel):
     """단일 업로드 상세 (status_history 포함)"""
