@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: llmz-ai-ml
+Version: 0.1.0
+Summary: AI/ML privacy pipeline for LLMZ service
+Requires-Python: >=3.10
+Requires-Dist: numpy
+Requires-Dist: scikit-learn
+Requires-Dist: openai

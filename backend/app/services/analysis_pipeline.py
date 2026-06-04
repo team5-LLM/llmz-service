@@ -1,11 +1,14 @@
 from pathlib import Path
-
+import math
+from typing import Any
+import numpy as np
 import pandas as pd
 
 from ai_ml.privacy_pipeline import (
     process_prompt_privacy,
     generate_cluster_based_recommendations,
 )
+from ai_ml.automation_matcher import match_automation_candidate_llm
 
 from app.services.csv_loader import load_and_validate_csv
 from app.services.scoring import (
@@ -16,8 +19,54 @@ from app.services.scoring import (
     adoption_decision,
 )
 from app.services.recommender import build_reason
-from app.services.automation_matcher import match_automation_candidate_llm
 
+def build_summary_from_dataframe(
+    adf: pd.DataFrame,
+    cluster_profiles: list[dict] | None = None,
+    cluster_recommendations: list[dict] | None = None,
+) -> dict:
+    """
+    dashboard_service.py 호환용 summary 생성 함수.
+
+    adf: analyze_csv_file()에서 생성한 analyzed DataFrame
+    cluster_profiles: AI/ML sub-clustering profile 목록
+    cluster_recommendations: AI/ML cluster 기반 추천 카드 목록
+    """
+    if adf is None or len(adf) == 0:
+        return {
+            "total_logs": 0,
+            "departments": 0,
+            "total_tokens": 0,
+            "total_cost": 0.0,
+            "avg_risk_score": 0.0,
+            "masked_logs": 0,
+            "no_sensitive_logs": 0,
+            "rejected_logs": 0,
+            "cluster_count": 0,
+            "recommendation_count": 0,
+        }
+
+    summary = {
+        "total_logs": int(len(adf)),
+        "departments": int(adf["department"].nunique())
+        if "department" in adf.columns else 0,
+        "total_tokens": int(adf["total_tokens"].sum())
+        if "total_tokens" in adf.columns else 0,
+        "total_cost": round(float(adf["cost"].sum()), 2)
+        if "cost" in adf.columns else 0.0,
+        "avg_risk_score": round(float(adf["risk_score"].mean()), 2)
+        if "risk_score" in adf.columns and len(adf) > 0 else 0.0,
+        "masked_logs": int((adf["masking_status"] == "MASKED").sum())
+        if "masking_status" in adf.columns else 0,
+        "no_sensitive_logs": int((adf["masking_status"] == "NO_SENSITIVE_FOUND").sum())
+        if "masking_status" in adf.columns else 0,
+        "rejected_logs": int(adf["unmasked_rejected"].sum())
+        if "unmasked_rejected" in adf.columns else 0,
+        "cluster_count": int(len(cluster_profiles or [])),
+        "recommendation_count": int(len(cluster_recommendations or [])),
+    }
+
+    return summary
 
 def analyze_csv_file(csv_path: str | Path) -> dict:
     df = load_and_validate_csv(csv_path)
@@ -25,7 +74,15 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
     analyzed_rows = []
 
     for index, row in df.iterrows():
-        prompt_text = str(row["prompt_text"] or "").strip()
+        raw_prompt = row.get("prompt_text", "")
+
+        if pd.isna(raw_prompt):
+            prompt_text = ""
+        else:
+            prompt_text = str(raw_prompt).strip()
+
+        if not prompt_text:
+            continue
 
         log_id = str(row.get("log_id", index))
 
@@ -102,21 +159,15 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
     adf = pd.DataFrame(analyzed_rows)
 
     if len(adf) == 0:
-        return {
-            "summary": {
-                "total_logs": 0,
-                "departments": 0,
-                "total_tokens": 0,
-                "total_cost": 0.0,
-                "avg_risk_score": 0.0,
-            },
+        return make_json_safe({
+            "summary": build_summary_from_dataframe(adf),
             "department_stats": [],
             "recommendations": [],
             "cluster_profiles": [],
             "cluster_recommendations": [],
             "sample_masked_logs": [],
             "masked_logs": [],
-        }
+        })
 
     # AI/ML batch clustering/recommendation
     processed_rows = adf.to_dict(orient="records")
@@ -149,34 +200,21 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
 
     adf = pd.DataFrame(analyzed_rows)
 
-    return {
-        "summary": {
-            "total_logs": int(len(adf)),
-            "departments": int(adf["department"].nunique()),
-            "total_tokens": int(adf["total_tokens"].sum()),
-            "total_cost": round(float(adf["cost"].sum()), 2),
-            "avg_risk_score": round(float(adf["risk_score"].mean()), 2),
-            "masked_logs": int((adf["masking_status"] == "MASKED").sum())
-            if "masking_status" in adf.columns else 0,
-            "no_sensitive_logs": int((adf["masking_status"] == "NO_SENSITIVE_FOUND").sum())
-            if "masking_status" in adf.columns else 0,
-            "rejected_logs": int(adf["unmasked_rejected"].sum())
-            if "unmasked_rejected" in adf.columns else 0,
-            "cluster_count": int(len(cluster_profiles)),
-            "recommendation_count": int(len(cluster_recommendations)),
-        },
+    result = {
+        "summary": build_summary_from_dataframe(
+            adf,
+            cluster_profiles=cluster_profiles,
+            cluster_recommendations=cluster_recommendations,
+        ),
         "department_stats": build_department_stats(adf),
-
-        # 기존 FE/API 호환용 추천
         "recommendations": build_recommendations(adf),
-
-        # AI/ML sub-clustering 기반 신규 결과
         "cluster_profiles": cluster_profiles,
         "cluster_recommendations": cluster_recommendations,
-
         "sample_masked_logs": adf.head(20).to_dict(orient="records"),
         "masked_logs": adf.to_dict(orient="records"),
     }
+
+    return make_json_safe(result)
 
 
 def build_department_stats(adf: pd.DataFrame) -> list[dict]:
@@ -290,3 +328,49 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
         result.extend(top_items.to_dict(orient="records"))
 
     return sorted(result, key=lambda x: x["opportunity_score"], reverse=True)
+
+def split_analysis_result_by_month(result: dict) -> dict:
+    """
+    현재는 월별 분할 없이 전체 분석 결과를 그대로 반환.
+    추후 created_at 기준 월별 분할 저장이 필요하면 여기서 구현.
+    """
+    return result
+
+def make_json_safe(value: Any) -> Any:
+    """
+    FastAPI JSON 응답에서 NaN / inf / numpy scalar 때문에 터지는 문제 방지.
+    dict/list 내부까지 재귀적으로 변환합니다.
+    """
+    if value is None:
+        return None
+
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return None
+        return value
+
+    if isinstance(value, np.floating):
+        value = float(value)
+        if math.isnan(value) or math.isinf(value):
+            return None
+        return value
+
+    if isinstance(value, np.integer):
+        return int(value)
+
+    if isinstance(value, np.ndarray):
+        return [make_json_safe(v) for v in value.tolist()]
+
+    if isinstance(value, dict):
+        return {
+            str(k): make_json_safe(v)
+            for k, v in value.items()
+        }
+
+    if isinstance(value, list):
+        return [make_json_safe(v) for v in value]
+
+    if isinstance(value, tuple):
+        return [make_json_safe(v) for v in value]
+
+    return value
