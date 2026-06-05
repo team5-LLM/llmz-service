@@ -226,7 +226,7 @@ def get_dashboard_departments(
 
 # SCR-DASH-001 부서 상세 확장 — 시계열·우선순위 (§3.4)
 @app.get(
-    "/api/dashboard/departments/{department}",
+    "/api/dashboard/departments/{department:path}",
     response_model=DashboardDepartmentDetailResponse,
 )
 def get_dashboard_department_detail(
@@ -267,6 +267,29 @@ def get_dashboard_department_detail(
         overview=detail["overview"],
         trend=detail["trend"],
         tasks_by_priority=detail["tasks_by_priority"],
+    )
+
+
+@app.get(
+    "/api/dashboard/department-detail",
+    response_model=DashboardDepartmentDetailResponse,
+)
+def get_dashboard_department_detail_by_query(
+    department: str = Query(..., description="부서명 (슬래시 포함 가능, 예: 재무/기획팀)"),
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+    granularity: str = Query(default="daily", description="daily | weekly | monthly"),
+    task_sort: str = Query(default="priority", description="priority | count | ratio"),
+):
+    """§3.4 — 부서명에 '/'가 있을 때 path 라우팅 대신 사용."""
+    return get_dashboard_department_detail(
+        department=department,
+        from_date=from_date,
+        to_date=to_date,
+        month=month,
+        granularity=granularity,
+        task_sort=task_sort,
     )
 
 
@@ -334,7 +357,7 @@ def get_dashboard_repeat_patterns(
 
 
 @app.get(
-    "/api/dashboard/departments/{department}/repeat-patterns",
+    "/api/dashboard/departments/{department:path}/repeat-patterns",
     response_model=DepartmentRepeatPatternsResponse,
 )
 def get_department_repeat_patterns(
@@ -397,7 +420,7 @@ def get_risk_levels():
 
 # SCR-RISK-002 — 부서별 Risk + 민감정보 유형 분포 (§5.2)
 @app.get(
-    "/api/risk/departments/{department}",
+    "/api/risk/departments/{department:path}",
     response_model=RiskDepartmentDetailResponse,
 )
 def get_risk_department_detail(
@@ -415,6 +438,25 @@ def get_risk_department_detail(
             detail=f"부서를 찾을 수 없습니다: {department}",
         )
     return RiskDepartmentDetailResponse(**detail)
+
+
+@app.get(
+    "/api/risk/department-detail",
+    response_model=RiskDepartmentDetailResponse,
+)
+def get_risk_department_detail_by_query(
+    department: str = Query(..., description="부서명 (슬래시 포함 가능)"),
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(default=None, description="YYYY-MM"),
+):
+    """§5.2 — 부서명에 '/'가 있을 때 path 라우팅 대신 사용."""
+    return get_risk_department_detail(
+        department=department,
+        from_date=from_date,
+        to_date=to_date,
+        month=month,
+    )
 
 
 # SCR-INPUT-004 CSV 업로드 — 파일 수신 즉시 응답, 분석은 백그라운드
@@ -614,7 +656,24 @@ def get_recommendations(
     }
 
 
-@app.get("/api/recommendations/{department}")
+@app.get("/api/recommendations/by-department")
+def get_recommendations_by_department_query(
+    department: str = Query(..., description="부서명 (슬래시 포함 가능)"),
+    from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    month: Optional[str] = Query(None, description="YYYY-MM"),
+):
+    """부서명에 '/'가 있을 때 path 라우팅 대신 사용."""
+    date_range = _resolve_history_date_range(from_date, to_date, month)
+    items = recommendation_svc.get_recommendations(date_range, department=department)
+    return {
+        "department": department,
+        "count": len(items),
+        "recommendations": items,
+    }
+
+
+@app.get("/api/recommendations/{department:path}")
 def get_recommendations_by_department(
     department: str,
     from_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),

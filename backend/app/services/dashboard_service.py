@@ -254,8 +254,8 @@ def fetch_prompt_log_rows_in_range(
     department: Optional[str] = None,
 ) -> List[PromptLogRow]:
     """
-    completed 업로드의 prompt_logs 중 created_at 이 기간 내인 행.
-    기간 내 로그가 없으면 최신 completed 1건의 전체 로그로 fallback (996c658).
+    completed 업로드의 prompt_logs 중 created_at 이 기간 내인 행만 반환.
+    기간 내 로그가 없으면 빈 배열 (다른 월·최신 업로드 fallback 없음).
     대시보드·Risk·추천·반복패턴 공통 데이터 소스.
     """
     session = safe_session()
@@ -264,27 +264,9 @@ def fetch_prompt_log_rows_in_range(
         return []
 
     try:
-        rows = _query_prompt_logs_in_created_at_range(
+        return _query_prompt_logs_in_created_at_range(
             session,
             date_range,
-            department=department,
-        )
-        if rows:
-            return rows
-
-        fallback_upload_id = _latest_completed_upload_id(session)
-        if fallback_upload_id is None:
-            return []
-
-        logger.info(
-            "기간 %s~%s 내 prompt_logs 없음 — 최신 completed 1건 사용 (upload_id=%s)",
-            date_range.from_date,
-            date_range.to_date,
-            fallback_upload_id,
-        )
-        return _query_prompt_logs_for_upload(
-            session,
-            fallback_upload_id,
             department=department,
         )
     except SQLAlchemyError as exc:
@@ -326,7 +308,7 @@ def fetch_cluster_recommendation_rows_in_range(
 def resolve_upload_ids(date_range: DateRange) -> List[str]:
     """
     fetch_prompt_log_rows_in_range 결과에서 upload_id 추출 (중복 제거).
-    기간 내 로그 없을 때는 fallback upload_id 1건.
+    기간 내 로그 없으면 빈 배열.
     """
     rows = fetch_prompt_log_rows_in_range(date_range)
     seen: set[str] = set()
@@ -380,23 +362,16 @@ def _merge_summaries(summaries: List[UploadSummary]) -> UploadSummary:
 
 
 def get_dashboard_summary(date_range: DateRange) -> UploadSummary:
-    """
-    KPI 3카드 summary — hybrid.
-
-    1) primary: prompt_logs.created_at 기간 재집계
-    2) fallback: upload_history.summary_json 스냅샷 (uploaded_at 기간 → 최신 completed)
-    """
+    """KPI 3카드 summary — prompt_logs.created_at 기간 재집계만 사용."""
     rows = _fetch_prompt_logs_strict_created_at(date_range)
-    if rows:
-        import pandas as pd
+    if not rows:
+        return UploadSummary()
 
-        log_dicts = [prompt_log_row_to_dict(row) for row in rows]
-        summary = build_summary_from_dataframe(pd.DataFrame(log_dicts))
-        validated = UploadSummary.model_validate(summary)
-        if validated.total_logs > 0:
-            return validated
+    import pandas as pd
 
-    return _get_dashboard_summary_from_snapshots(date_range)
+    log_dicts = [prompt_log_row_to_dict(row) for row in rows]
+    summary = build_summary_from_dataframe(pd.DataFrame(log_dicts))
+    return UploadSummary.model_validate(summary)
 
 
 def _load_task_distribution(raw: str | None) -> List[dict[str, Any]]:
@@ -525,23 +500,16 @@ def _department_stat_dicts_to_items(stats: List[dict[str, Any]]) -> List[Departm
 
 
 def get_dashboard_departments(date_range: DateRange) -> List[DepartmentStatItem]:
-    """
-    §3.3 department_stats[] — hybrid.
-
-    1) primary: prompt_logs.created_at 기간 재집계
-    2) fallback: department_stats 스냅샷 (uploaded_at 기간 → 최신 completed)
-    """
+    """§3.3 department_stats[] — prompt_logs.created_at 기간 재집계만 사용."""
     rows = _fetch_prompt_logs_strict_created_at(date_range)
-    if rows:
-        import pandas as pd
+    if not rows:
+        return []
 
-        log_dicts = [prompt_log_row_to_dict(row) for row in rows]
-        stats = build_department_stats(pd.DataFrame(log_dicts))
-        items = _department_stat_dicts_to_items(stats)
-        if items:
-            return items
+    import pandas as pd
 
-    return _get_dashboard_departments_from_snapshots(date_range)
+    log_dicts = [prompt_log_row_to_dict(row) for row in rows]
+    stats = build_department_stats(pd.DataFrame(log_dicts))
+    return _department_stat_dicts_to_items(stats)
 
 
 Granularity = Literal["daily", "weekly", "monthly"]

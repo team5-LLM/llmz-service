@@ -1,4 +1,4 @@
-"""dashboard_service — hybrid 집계 (created_at primary + snapshot fallback) 테스트."""
+"""dashboard_service — created_at 기간 재집계 (스냅샷 fallback 없음) 테스트."""
 
 from __future__ import annotations
 
@@ -10,17 +10,12 @@ from app.services import dashboard_service as svc
 from app.utils.date_range import resolve_date_range
 
 
-class DashboardHybridSummaryTests(unittest.TestCase):
+class DashboardSummaryTests(unittest.TestCase):
     def setUp(self):
         self.date_range = resolve_date_range(month="2099-01")
 
-    @patch("app.services.dashboard_service._get_dashboard_summary_from_snapshots")
     @patch("app.services.dashboard_service._fetch_prompt_logs_strict_created_at")
-    def test_uses_primary_when_created_at_logs_exist(
-        self,
-        mock_strict,
-        mock_snapshot,
-    ):
+    def test_uses_created_at_logs_when_present(self, mock_strict):
         row = MagicMock()
         row.log_id = 1
         row.department = "마케팅팀"
@@ -51,65 +46,33 @@ class DashboardHybridSummaryTests(unittest.TestCase):
         summary = svc.get_dashboard_summary(self.date_range)
 
         self.assertEqual(summary.total_logs, 1)
-        mock_snapshot.assert_not_called()
 
-    @patch("app.services.dashboard_service._get_dashboard_summary_from_snapshots")
     @patch("app.services.dashboard_service._fetch_prompt_logs_strict_created_at")
-    def test_falls_back_to_snapshot_when_no_created_at_logs(
-        self,
-        mock_strict,
-        mock_snapshot,
-    ):
+    def test_returns_empty_summary_when_no_created_at_logs(self, mock_strict):
         mock_strict.return_value = []
-        mock_snapshot.return_value = UploadSummary(
-            total_logs=42,
-            departments=3,
-            total_tokens=1000,
-            total_cost=50.0,
-            avg_risk_score=12.5,
-        )
 
         summary = svc.get_dashboard_summary(self.date_range)
 
-        self.assertEqual(summary.total_logs, 42)
-        mock_snapshot.assert_called_once_with(self.date_range)
+        self.assertEqual(summary.total_logs, 0)
+        self.assertEqual(summary.departments, 0)
 
 
-class DashboardHybridDepartmentsTests(unittest.TestCase):
+class DashboardDepartmentsTests(unittest.TestCase):
     def setUp(self):
         self.date_range = resolve_date_range(month="2099-01")
 
-    @patch("app.services.dashboard_service._get_dashboard_departments_from_snapshots")
     @patch("app.services.dashboard_service._fetch_prompt_logs_strict_created_at")
-    def test_falls_back_to_snapshot_when_no_created_at_logs(
-        self,
-        mock_strict,
-        mock_snapshot,
-    ):
+    def test_returns_empty_list_when_no_created_at_logs(self, mock_strict):
         mock_strict.return_value = []
-        dept = svc.DepartmentStatItem(
-            department="마케팅팀",
-            total_requests=10,
-            total_tokens=100,
-            total_cost=1.0,
-            user_count=1,
-            avg_risk_score=20.0,
-            risk_level="Low",
-            high_critical_ratio=0.0,
-            task_distribution=[],
-        )
-        mock_snapshot.return_value = [dept]
 
         items = svc.get_dashboard_departments(self.date_range)
 
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0].department, "마케팅팀")
-        mock_snapshot.assert_called_once_with(self.date_range)
+        self.assertEqual(items, [])
 
 
 class SnapshotUploadIdResolutionTests(unittest.TestCase):
     @patch("app.services.dashboard_service.safe_session")
-    def test_resolve_snapshot_upload_ids_uses_uploaded_at_then_latest(
+    def test_resolve_snapshot_upload_ids_returns_empty_without_uploaded_at_match(
         self,
         mock_safe_session,
     ):
