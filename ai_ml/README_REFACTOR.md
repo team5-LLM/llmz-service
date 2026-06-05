@@ -19,7 +19,7 @@ ai_ml/
   cluster_labeler.py         # cluster profile 및 label 생성
   recommendation_generator.py# 자동화 추천 카드 생성
   automation_matcher.py      # 부서/업무유형 기반 자동화 후보 매칭
-  xai_explainer.py           # 추천 근거 자연어 설명
+  xai_explainer.py           # (DEPRECATED) LLM 설명 — BE 미연동, recommender.enrich_recommendation_xai 사용
   privacy_pipeline.py        # main orchestration
 ```
 

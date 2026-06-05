@@ -3,15 +3,25 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.schemas.dashboard import DepartmentStatItem, TaskDistributionItem
+from app.services.persistence_service import (
+    _build_cluster_label_lookup,
+    _cluster_fields_for_log,
+)
 from app.services.repeat_pattern_service import (
     PromptLogEntry,
+    _row_to_entry,
+    get_repeat_patterns,
     group_prompt_logs,
     summarize_department_patterns,
 )
+from app.utils.date_range import DateRange
 
 
 class RepeatPatternAnalyzerTests(unittest.TestCase):
@@ -88,6 +98,111 @@ class RepeatPatternAnalyzerTests(unittest.TestCase):
         self.assertEqual(summary["repeat_requests"], 3)
         self.assertEqual(summary["repeat_ratio"], 75.0)
         self.assertTrue(summary["patterns"][0]["is_repeat"])
+
+
+class RepeatPatternPersistedRowTests(unittest.TestCase):
+    def _prompt_log_row(self, **overrides):
+        base = {
+            "department": "마케팅팀",
+            "task_label": "보고서 작성형",
+            "masked_prompt": "주간 보고서 작성",
+            "cluster_id": "마케팅팀_cluster_1",
+            "pattern_label": "캠페인 성과 리포트",
+        }
+        base.update(overrides)
+        return SimpleNamespace(**base)
+
+    def test_row_to_entry_reads_cluster_id_from_persisted_row(self):
+        row = self._prompt_log_row()
+        entry = _row_to_entry(row)  # type: ignore[arg-type]
+
+        self.assertEqual(entry.cluster_id, "마케팅팀_cluster_1")
+        self.assertEqual(entry.pattern_label, "캠페인 성과 리포트")
+
+    def test_group_from_db_rows_uses_cluster_mode(self):
+        rows = [
+            self._prompt_log_row(masked_prompt="프롬프트 A"),
+            self._prompt_log_row(masked_prompt="프롬프트 B"),
+        ]
+        entries = [_row_to_entry(row) for row in rows]  # type: ignore[arg-type]
+        groups, method = group_prompt_logs(entries, method="cluster")
+
+        self.assertEqual(method, "cluster")
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0].count, 2)
+        self.assertEqual(groups[0].cluster_id, "마케팅팀_cluster_1")
+        self.assertEqual(groups[0].label, "캠페인 성과 리포트")
+        self.assertTrue(groups[0].pattern_key.startswith("c-"))
+
+    def test_cluster_fields_for_log_maps_sub_cluster_id_and_profile_label(self):
+        lookup = _build_cluster_label_lookup(
+            {
+                "cluster_profiles": [
+                    {
+                        "department": "마케팅팀",
+                        "sub_cluster_id": "마케팅팀_cluster_7",
+                        "cluster_label": "캠페인 성과 리포트",
+                    }
+                ]
+            }
+        )
+        cluster_id, pattern_label = _cluster_fields_for_log(
+            {
+                "department": "마케팅팀",
+                "sub_cluster_id": "마케팅팀_cluster_7",
+            },
+            label_lookup=lookup,
+        )
+
+        self.assertEqual(cluster_id, "마케팅팀_cluster_7")
+        self.assertEqual(pattern_label, "캠페인 성과 리포트")
+
+    @patch("app.services.repeat_pattern_service.dashboard_svc.fetch_prompt_log_rows_in_range")
+    @patch("app.services.repeat_pattern_service.dashboard_svc.get_dashboard_departments")
+    def test_get_repeat_patterns_cluster_method_from_db_rows(
+        self,
+        mock_departments,
+        mock_fetch_logs,
+    ):
+        mock_departments.return_value = [
+            DepartmentStatItem(
+                department="마케팅팀",
+                total_requests=2,
+                total_tokens=100,
+                total_cost=10.0,
+                user_count=2,
+                avg_risk_score=12.0,
+                risk_level="Low",
+                high_critical_ratio=0.0,
+                task_distribution=[
+                    TaskDistributionItem(
+                        label="보고서 작성형",
+                        label_display="보고서 작성형",
+                        count=2,
+                        ratio=1.0,
+                    )
+                ],
+            )
+        ]
+        mock_fetch_logs.return_value = [
+            self._prompt_log_row(masked_prompt="A"),
+            self._prompt_log_row(masked_prompt="B"),
+        ]
+
+        result = get_repeat_patterns(
+            DateRange(from_date="2026-05-01", to_date="2026-05-31"),
+            method="cluster",
+        )
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result["analysis_method"], "cluster")
+        marketing = next(
+            item for item in result["departments"] if item["department"] == "마케팅팀"
+        )
+        self.assertTrue(marketing["patterns"])
+        self.assertEqual(marketing["patterns"][0]["cluster_id"], "마케팅팀_cluster_1")
+        self.assertEqual(marketing["patterns"][0]["label"], "캠페인 성과 리포트")
 
 
 class RepeatPatternApiTests(unittest.TestCase):

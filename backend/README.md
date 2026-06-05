@@ -163,6 +163,8 @@ CSV 읽기 → 스키마 검증 → 프롬프트 마스킹 → 업무유형 분�
 
 핵심: `app/services/analysis_pipeline.py`, `masking.py`, `scoring.py`, `recommender.py`
 
+**XAI(추천 근거):** `recommender.enrich_recommendation_xai()` — `ai_ml/xai_explainer.py`는 미연동(deprecated).
+
 ## API 개요
 
 기간: `?month=YYYY-MM` 또는 `?from_date=...&to_date=...`  

@@ -110,9 +110,11 @@ SCR-INPUT-004 이력 API. **성공 시 CSV 1파일당 `log_months` 개수만큼 
 
 ---
 
-### 2.3 `recommendations`
+### 2.3 `recommendations` (DEPRECATED snapshot)
 
-업로드 1건 × (부서, 업무유형) 1행. **`기타` 제외**.
+**상태**: 스키마·reset DELETE 유지. **`persist_analysis_result` INSERT 중단** (P2-A). API read 없음.
+
+과거 업로드 1건 × (부서, 업무유형) 1행 스냅샷. **`기타` 제외**.
 
 | 컬럼 | SQL 타입 | NULL | 설명 |
 | --- | --- | --- | --- |
@@ -140,7 +142,7 @@ SCR-INPUT-004 이력 API. **성공 시 CSV 1파일당 `log_months` 개수만큼 
 | `uq_recommendations_upload_dept_task` | UNIQUE | `upload_id`, `department`, `task_label` |
 | `ix_recommendations_upload_id` | INDEX | `upload_id` |
 
-**조회**: `recommendation_service` — `prompt_logs.created_at` 필터 + 재집계 병행
+**조회 API**: `recommendation_service` — `cluster_recommendations` 우선 → `prompt_logs` 재집계 (이 테이블 미조회)
 
 ---
 
@@ -169,6 +171,8 @@ SCR-INPUT-004 이력 API. **성공 시 CSV 1파일당 `log_months` 개수만큼 
 | `original_discard_verified` | `BIT` | NO | 기본 `true` |
 | `discard_verification_message` | `NVARCHAR(MAX)` | YES | 폐기 검증 메시지 |
 | `pii_detected` ~ `exposure_detected` | `BIT` | NO | 마스킹·Risk 플래그 (8종) |
+| `cluster_id` | `NVARCHAR(128)` | YES | AI/ML `sub_cluster_id` — repeat_pattern cluster 모드 |
+| `pattern_label` | `NVARCHAR(128)` | YES | `cluster_profiles.cluster_label` 또는 `source_cluster_label` |
 
 **제약·인덱스**
 
@@ -178,7 +182,7 @@ SCR-INPUT-004 이력 API. **성공 시 CSV 1파일당 `log_months` 개수만큼 
 | `ix_prompt_logs_upload_id` | INDEX | `upload_id` |
 | `ix_prompt_logs_upload_department` | INDEX | `upload_id`, `department` |
 
-**P1 예정 (ORM 주석만)**: `cluster_id`, `pattern_label`
+**마이그레이션**: `init_db()` → `migrate_prompt_logs_cluster()` — 기존 DB에 `ALTER TABLE` ADD
 
 ---
 
@@ -202,8 +206,9 @@ multipart CSV 수신
         → processing → completed
         → persist_analysis_result(upload_id, 월별 result)
               ├─ department_stats
-              ├─ recommendations
+              ├─ cluster_recommendations
               └─ prompt_logs
+              (recommendations — deprecated, INSERT 없음)
 ```
 
 ### 3.2 조회·집계

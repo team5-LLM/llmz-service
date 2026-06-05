@@ -1,11 +1,34 @@
-const riskGrade = [
-  { range: '0 ~ 30', grade: 'Low', meaning: '일반 업무 프롬프트', badgeClass: 'bg-risk-low' },
-  { range: '31 ~ 60', grade: 'Medium', meaning: '일부 민감정보 가능성', badgeClass: 'bg-risk-medium' },
-  { range: '61 ~ 80', grade: 'High', meaning: '개인정보/기밀정보 포함 가능성 높음', badgeClass: 'bg-risk-high' },
-  { range: '81 ~ 100', grade: 'Critical', meaning: '원문 저장 금지, 관리자 검토 필요', badgeClass: 'bg-risk-critical' },
-]
+import type { RiskLevel, RiskLevelDefinition } from '../../api/types'
 
-const RiskTable = () => {
+const BADGE_CLASS: Record<RiskLevel, string> = {
+  Low: 'bg-risk-low',
+  Medium: 'bg-risk-medium',
+  High: 'bg-risk-high',
+  Critical: 'bg-risk-critical',
+}
+
+type Props = {
+  levels: RiskLevelDefinition[]
+  loading?: boolean
+}
+
+const RiskTable = ({ levels, loading = false }: Props) => {
+  if (loading) {
+    return (
+      <p className="text-sm text-center py-8" style={{ color: 'var(--color-gray-500)' }}>
+        데이터 불러오는 중...
+      </p>
+    )
+  }
+
+  if (levels.length === 0) {
+    return (
+      <p className="text-sm text-center py-8" style={{ color: 'var(--color-gray-500)' }}>
+        등급 정의를 불러오지 못했습니다.
+      </p>
+    )
+  }
+
   return (
     <div className="w-full overflow-x-auto">
       <table className="w-full text-md border-collapse">
@@ -17,12 +40,12 @@ const RiskTable = () => {
           </tr>
         </thead>
         <tbody>
-          {riskGrade.map((row) => (
-            <tr key={row.grade} className="border-b border-gray-100">
-              <td className="px-4 py-3 text-black">{row.range}</td>
+          {levels.map((row) => (
+            <tr key={row.level} className="border-b border-gray-100">
+              <td className="px-4 py-3 text-black">{row.score_range.replace('~', ' ~ ')}</td>
               <td className="px-4 py-3">
-                <span className={`inline-block text-center w-[70px] py-2 rounded-full text-sm ${row.badgeClass}`}>
-                  {row.grade}
+                <span className={`inline-block text-center w-[70px] py-2 rounded-full text-sm ${BADGE_CLASS[row.level]}`}>
+                  {row.level}
                 </span>
               </td>
               <td className="px-4 py-2.5 text-black">{row.meaning}</td>

@@ -92,6 +92,12 @@ class RiskOverviewServiceTests(unittest.TestCase):
             self.assertEqual(result["summary"]["medium_count"], 1)
             self.assertEqual(result["summary"]["low_count"], 1)
             self.assertEqual(result["summary"]["total_departments"], 4)
+            self.assertEqual(len(result["all_departments"]), 4)
+            self.assertEqual(result["all_departments"][0]["department"], "법무팀")
+            self.assertEqual(result["all_departments"][1]["department"], "재무팀")
+            dept_names = [item["department"] for item in result["all_departments"]]
+            self.assertIn("마케팅팀", dept_names)
+            self.assertIn("개발팀", dept_names)
             self.assertEqual(result["critical_departments"][0]["department"], "법무팀")
             self.assertEqual(result["high_departments"][0]["department"], "재무팀")
         finally:
@@ -108,6 +114,7 @@ class RiskOverviewApiTests(unittest.TestCase):
         body = resp.json()
         self.assertIn("period", body)
         self.assertIn("summary", body)
+        self.assertIn("all_departments", body)
         self.assertIn("critical_departments", body)
         self.assertIn("high_departments", body)
         for key in ("critical_count", "high_count", "medium_count", "low_count", "total_departments"):

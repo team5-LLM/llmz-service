@@ -1,8 +1,8 @@
 """
 SCR-DASH-003 — 부서별 반복 프롬프트 비율.
 
-현재: masked_prompt 정규화 기반 heuristic 그룹핑.
-추후: prompt_logs.cluster_id / pattern_label (FUNC-PROC-005) 연동 시 동일 API 응답 유지.
+heuristic: masked_prompt 정규화 그룹핑.
+cluster/auto: prompt_logs.cluster_id(AI/ML sub_cluster_id) · pattern_label 기반 그룹핑.
 """
 
 from __future__ import annotations
@@ -193,8 +193,8 @@ def _row_to_entry(row: PromptLogRow) -> PromptLogEntry:
         department=row.department,
         task_label=row.task_label,
         masked_prompt=row.masked_prompt,
-        cluster_id=getattr(row, "cluster_id", None),
-        pattern_label=getattr(row, "pattern_label", None),
+        cluster_id=row.cluster_id,
+        pattern_label=row.pattern_label,
     )
 
 

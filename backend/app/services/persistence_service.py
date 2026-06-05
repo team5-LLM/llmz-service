@@ -2,9 +2,12 @@
 분석 결과 Azure SQL 영속화
 
 persist_analysis_result(upload_id, result):
-  - department_stats[] → department_stats 테이블
-  - recommendations[] → recommendations 테이블
-  - masked_logs[]     → prompt_logs 테이블 (전체 행, API 응답에는 sample 20건만)
+  - department_stats[]         → department_stats 테이블
+  - cluster_recommendations[]  → cluster_recommendations 테이블
+  - masked_logs[]              → prompt_logs 테이블 (전체 행, API sample 20건만)
+
+recommendations 테이블(task 스냅샷)은 API read 경로가 없어 INSERT 하지 않는다.
+재업로드 시 해당 upload_id 레거시 행만 DELETE (reset 호환).
 """
 
 from __future__ import annotations
@@ -27,6 +30,50 @@ logger = logging.getLogger(__name__)
 
 def _dump_json(value) -> str:
     return json.dumps(value, ensure_ascii=False)
+
+
+def _build_cluster_label_lookup(result: dict) -> dict[tuple[str, str], str]:
+    """(department, sub_cluster_id) → 표시용 pattern_label (cluster_profiles 우선)."""
+    lookup: dict[tuple[str, str], str] = {}
+
+    for profile in result.get("cluster_profiles", []):
+        sub_cluster_id = profile.get("sub_cluster_id")
+        if not sub_cluster_id:
+            continue
+        label = profile.get("cluster_label") or profile.get("source_cluster_label")
+        if label:
+            lookup[(str(profile.get("department", "")), str(sub_cluster_id))] = str(label)
+
+    for card in result.get("cluster_recommendations", []):
+        sub_cluster_id = card.get("sub_cluster_id")
+        if not sub_cluster_id:
+            continue
+        key = (str(card.get("department", "")), str(sub_cluster_id))
+        if key not in lookup:
+            source = card.get("source_cluster_label")
+            if source:
+                lookup[key] = str(source)
+
+    return lookup
+
+
+def _cluster_fields_for_log(
+    log: dict,
+    *,
+    label_lookup: dict[tuple[str, str], str],
+) -> tuple[str | None, str | None]:
+    """masked_log → (cluster_id, pattern_label). cluster_id는 AI/ML sub_cluster_id."""
+    raw_cluster_id = log.get("sub_cluster_id") or log.get("cluster_id")
+    if not raw_cluster_id:
+        return None, None
+
+    cluster_id = str(raw_cluster_id)
+    dept = str(log.get("department", ""))
+    pattern_label = label_lookup.get((dept, cluster_id))
+    if not pattern_label:
+        inline = log.get("pattern_label") or log.get("cluster_label")
+        pattern_label = str(inline) if inline else None
+    return cluster_id, pattern_label
 
 
 def persist_analysis_result(upload_id: str, result: dict) -> bool:
@@ -90,28 +137,16 @@ def persist_analysis_result(upload_id: str, result: dict) -> bool:
                 )
             )
 
-        for rec in result.get("recommendations", []):
-            session.add(
-                RecommendationRow(
-                    upload_id=upload_id,
-                    department=rec["department"],
-                    task_label=rec["task_label"],
-                    service_name=rec["service_name"],
-                    expected_effect=rec["expected_effect"],
-                    difficulty=rec["difficulty"],
-                    required_resources_json=_dump_json(rec.get("required_resources", [])),
-                    opportunity_score=int(rec["opportunity_score"]),
-                    risk_score=float(rec["risk_score"]),
-                    risk_level=str(rec["risk_level"]),
-                    decision=rec["decision"],
-                    decision_level=rec["decision_level"],
-                    decision_message=rec["decision_message"],
-                    required_action=rec["required_action"],
-                    reason_json=_dump_json(rec.get("reason", [])),
-                )
-            )
+        # result["recommendations"] — analyze 파이프라인 산출물이나 DB 미영속(deprecated snapshot).
+        # SCR-RECO API는 cluster_recommendations 또는 prompt_logs 재집계만 사용.
+
+        cluster_label_lookup = _build_cluster_label_lookup(result)
 
         for log in result.get("masked_logs", []):
+            cluster_id, pattern_label = _cluster_fields_for_log(
+                log,
+                label_lookup=cluster_label_lookup,
+            )
             session.add(
                 PromptLogRow(
                     upload_id=upload_id,
@@ -141,16 +176,17 @@ def persist_analysis_result(upload_id: str, result: dict) -> bool:
                     secret_detected=bool(log.get("secret_detected", False)),
                     hr_detected=bool(log.get("hr_detected", False)),
                     exposure_detected=bool(log.get("exposure_detected", False)),
+                    cluster_id=cluster_id,
+                    pattern_label=pattern_label,
                 )
             )
 
         session.commit()
         logger.info(
-            "persist_analysis_result 완료 (upload_id=%s, stats=%s, cluster_recs=%s, recs=%s, logs=%s)",
+            "persist_analysis_result 완료 (upload_id=%s, stats=%s, cluster_recs=%s, logs=%s)",
             upload_id,
             len(result.get("department_stats", [])),
             len(result.get("cluster_recommendations", [])),
-            len(result.get("recommendations", [])),
             len(result.get("masked_logs", [])),
         )
         return True

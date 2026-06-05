@@ -17,7 +17,7 @@ SensitiveCategory = Literal[
 
 
 class DepartmentRiskItem(BaseModel):
-    """Critical/High 부서 요약."""
+    """부서별 Risk Score 요약."""
 
     department: str
     avg_risk_score: float
@@ -37,6 +37,7 @@ class RiskOverviewResponse(BaseModel):
 
     period: DashboardPeriod
     summary: RiskOverviewSummary
+    all_departments: List[DepartmentRiskItem]
     critical_departments: List[DepartmentRiskItem]
     high_departments: List[DepartmentRiskItem]
 

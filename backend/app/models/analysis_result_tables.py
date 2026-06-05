@@ -30,6 +30,8 @@ class DepartmentStatRow(Base):
 
 
 class RecommendationRow(Base):
+    """DEPRECATED — task 추천 스냅샷. persist 미사용 · API read 없음 · reset 시 DELETE만."""
+
     __tablename__ = "recommendations"
     __table_args__ = (
         Index("ix_recommendations_upload_id", "upload_id"),
@@ -136,6 +138,6 @@ class PromptLogRow(Base):
     hr_detected: Mapped[bool] = mapped_column(nullable=False, default=False)
     exposure_detected: Mapped[bool] = mapped_column(nullable=False, default=False)
 
-    # FUNC-PROC-005 Sub-Clustering 연동 예정 (nullable · 마이그레이션 후 persist)
-    # cluster_id: Mapped[Optional[str]] = mapped_column(Unicode(64), nullable=True)
-    # pattern_label: Mapped[Optional[str]] = mapped_column(Unicode(128), nullable=True)
+    # FUNC-PROC-005 — AI/ML sub_cluster_id · cluster_label (repeat_pattern cluster 모드)
+    cluster_id: Mapped[Optional[str]] = mapped_column(Unicode(128), nullable=True)
+    pattern_label: Mapped[Optional[str]] = mapped_column(Unicode(128), nullable=True)

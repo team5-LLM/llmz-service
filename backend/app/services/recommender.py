@@ -198,7 +198,10 @@ def build_decision_reason(recommendation: dict) -> str:
 
 def enrich_recommendation_xai(recommendation: dict) -> dict:
     """
-    추천 카드에 XAI 설명 필드를 추가합니다.
+    추천 카드에 XAI 설명 필드를 추가합니다. (Canonical XAI 경로)
+
+    API 응답의 xai_summary, key_evidence, decision_reason은 이 함수가 생성합니다.
+    ai_ml/xai_explainer.py(LLM 기반)는 미연동·deprecated — import하지 않습니다.
     기존 reason 필드는 유지합니다.
     """
     from app.services.scoring import adoption_decision, normalize_decision_level

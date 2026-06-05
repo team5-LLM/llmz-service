@@ -408,7 +408,7 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
 
 
 def build_analysis_result_from_logs(log_records: list[dict]) -> dict:
-    """prompt_logs / masked_logs 레코드 목록 → 분석 결과 dict."""
+    """prompt_logs / masked_logs 레코드 목록 → 분석 결과 dict (task 집계 전용, cluster 미포함)."""
     adf = pd.DataFrame(log_records)
     if adf.empty:
         return {
@@ -431,10 +431,50 @@ def build_analysis_result_from_logs(log_records: list[dict]) -> dict:
     }
 
 
+def _cluster_keys_from_logs(logs: list[dict]) -> set[tuple[str, str]]:
+    """월별 로그에 등장하는 (department, sub_cluster_id) 집합."""
+    keys: set[tuple[str, str]] = set()
+    for log in logs:
+        sub_cluster_id = log.get("sub_cluster_id")
+        if sub_cluster_id:
+            keys.add((str(log.get("department", "")), str(sub_cluster_id)))
+    return keys
+
+
+def _filter_cluster_recommendations(
+    cards: list[dict],
+    cluster_keys: set[tuple[str, str]],
+) -> list[dict]:
+    if not cluster_keys:
+        return []
+    return [
+        card
+        for card in cards
+        if (str(card.get("department", "")), str(card.get("sub_cluster_id", ""))) in cluster_keys
+    ]
+
+
+def _filter_cluster_profiles(
+    profiles: list[dict],
+    cluster_keys: set[tuple[str, str]],
+) -> list[dict]:
+    if not cluster_keys:
+        return []
+    return [
+        profile
+        for profile in profiles
+        if (str(profile.get("department", "")), str(profile.get("sub_cluster_id", ""))) in cluster_keys
+    ]
+
+
 def split_analysis_result_by_month(result: dict) -> dict[str, dict]:
     """
     분석 결과를 prompt_logs.created_at 월(YYYY-MM)별로 분할.
     업로드 시 월별 upload_id + persist 용.
+
+    cluster_recommendations/cluster_profiles는 analyze_csv_file() 전체 배치 결과에서
+    해당 월 masked_logs의 (department, sub_cluster_id)로 필터해 month_result에 포함한다.
+    cluster_profiles는 월별 result·summary에만 포함되며 DB 영속화는 하지 않는다.
     """
     grouped: dict[str, list[dict]] = defaultdict(list)
     for log in result.get("masked_logs", []):
@@ -442,10 +482,26 @@ def split_analysis_result_by_month(result: dict) -> dict[str, dict]:
         if month:
             grouped[month].append(log)
 
-    return {
-        month: build_analysis_result_from_logs(logs)
-        for month, logs in sorted(grouped.items())
-    }
+    parent_cards = result.get("cluster_recommendations") or []
+    parent_profiles = result.get("cluster_profiles") or []
+
+    monthly: dict[str, dict] = {}
+    for month, logs in sorted(grouped.items()):
+        month_result = build_analysis_result_from_logs(logs)
+        cluster_keys = _cluster_keys_from_logs(logs)
+        cards = _filter_cluster_recommendations(parent_cards, cluster_keys)
+        profiles = _filter_cluster_profiles(parent_profiles, cluster_keys)
+
+        month_result["cluster_recommendations"] = cards
+        month_result["cluster_profiles"] = profiles
+        month_result["summary"] = build_summary_from_dataframe(
+            pd.DataFrame(logs),
+            cluster_profiles=profiles,
+            cluster_recommendations=cards,
+        )
+        monthly[month] = month_result
+
+    return monthly
 
 def make_json_safe(value: Any) -> Any:
     """

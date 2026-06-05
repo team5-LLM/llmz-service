@@ -149,6 +149,12 @@ def init_db() -> bool:
         if hash_steps:
             logger.info("upload_history file hash 마이그레이션 — %s 단계", hash_steps)
 
+        from app.db.migrate_prompt_logs_cluster import migrate_prompt_logs_cluster
+
+        cluster_steps = migrate_prompt_logs_cluster(get_engine())
+        if cluster_steps:
+            logger.info("prompt_logs cluster 마이그레이션 — %s 컬럼 추가", cluster_steps)
+
         return True
     except Exception as exc:
         logger.error("init_db 실패: %s", exc)

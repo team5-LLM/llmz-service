@@ -1,4 +1,12 @@
-"""SCR-RECO — recommendations 재집계 (prompt_logs.created_at 기준)."""
+"""
+SCR-RECO — 추천 API 조회 (prompt_logs.created_at 기준).
+
+Read 우선순위 (recommendations 테이블 미사용 — deprecated snapshot):
+  1. cluster_recommendations DB (AI/ML cluster 카드)
+  2. prompt_logs → build_recommendations() 실시간 task 재집계
+
+XAI: recommender.enrich_recommendation_xai() — ai_ml/xai_explainer 미사용.
+"""
 
 from __future__ import annotations
 
@@ -106,7 +114,8 @@ def get_recommendations(
 ) -> List[dict[str, Any]]:
     """
     기간 내 추천 카드 조회.
-    AI/ML cluster_recommendations 가 있으면 우선 반환, 없으면 task_label 기반 재집계.
+    cluster_recommendations DB 우선 → 없으면 prompt_logs task 재집계.
+    (legacy recommendations 테이블은 read fallback 없음)
     """
     cluster_rows = dashboard_svc.fetch_cluster_recommendation_rows_in_range(
         date_range,

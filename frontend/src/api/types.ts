@@ -78,3 +78,64 @@ export interface UploadHistoryListResponse {
   limit: number
   skip: number
 }
+
+export type SensitiveCategory =
+  | 'personal_info'
+  | 'customer_info'
+  | 'confidential'
+  | 'source_code'
+  | 'finance_legal'
+
+export interface DashboardPeriod {
+  from_date: string
+  to_date: string
+}
+
+export interface DepartmentRiskItem {
+  department: string
+  avg_risk_score: number
+  risk_level: RiskLevel
+}
+
+export interface RiskOverviewSummary {
+  critical_count: number
+  high_count: number
+  medium_count: number
+  low_count: number
+  total_departments: number
+}
+
+export interface RiskOverviewResponse {
+  period: DashboardPeriod
+  summary: RiskOverviewSummary
+  all_departments: DepartmentRiskItem[]
+  critical_departments: DepartmentRiskItem[]
+  high_departments: DepartmentRiskItem[]
+}
+
+export interface RiskLevelDefinition {
+  level: RiskLevel
+  score_range: string
+  meaning: string
+  recommended_action: string
+}
+
+export interface RiskLevelsResponse {
+  levels: RiskLevelDefinition[]
+}
+
+export interface SensitiveBreakdownItem {
+  category: SensitiveCategory
+  label: string
+  count: number
+  ratio: number
+}
+
+export interface RiskDepartmentDetailResponse {
+  department: string
+  period: DashboardPeriod
+  risk_score: number
+  risk_level: RiskLevel
+  high_critical_ratio: number
+  sensitive_breakdown: SensitiveBreakdownItem[]
+}

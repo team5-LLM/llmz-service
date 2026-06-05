@@ -73,7 +73,7 @@ def get_risk_levels() -> dict:
 
 def get_risk_overview(date_range: DateRange) -> dict:
     """
-    기간 내 department_stats 기준 등급별 부서 수 · Critical/High 목록.
+    기간 내 department_stats 기준 등급별 부서 수 · 전체/Critical/High 목록.
     get_dashboard_departments() 재사용.
     """
     stats = dashboard_svc.get_dashboard_departments(date_range)
@@ -85,22 +85,26 @@ def get_risk_overview(date_range: DateRange) -> dict:
         "low_count": 0,
         "total_departments": len(stats),
     }
+    all_departments: List[DepartmentRiskItem] = []
     critical: List[DepartmentRiskItem] = []
     high: List[DepartmentRiskItem] = []
 
     for stat in stats:
+        item = _to_risk_item(stat)
+        all_departments.append(item)
         level = stat.risk_level
         if level == "Critical":
             summary["critical_count"] += 1
-            critical.append(_to_risk_item(stat))
+            critical.append(item)
         elif level == "High":
             summary["high_count"] += 1
-            high.append(_to_risk_item(stat))
+            high.append(item)
         elif level == "Medium":
             summary["medium_count"] += 1
         elif level == "Low":
             summary["low_count"] += 1
 
+    all_departments.sort(key=lambda item: (-item.avg_risk_score, item.department))
     critical.sort(key=lambda item: (-item.avg_risk_score, item.department))
     high.sort(key=lambda item: (-item.avg_risk_score, item.department))
 
@@ -110,6 +114,7 @@ def get_risk_overview(date_range: DateRange) -> dict:
             "to_date": date_range.to_date,
         },
         "summary": summary,
+        "all_departments": [item.model_dump() for item in all_departments],
         "critical_departments": [item.model_dump() for item in critical],
         "high_departments": [item.model_dump() for item in high],
     }

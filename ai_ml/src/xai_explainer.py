@@ -1,4 +1,8 @@
-"""추천 근거 설명(XAI): 구조화된 reason을 자연어 문단으로 변환."""
+"""DEPRECATED — BE 미연동. API XAI는 backend/app/services/recommender.enrich_recommendation_xai() 사용.
+
+(구) LLM 기반 설명 생성기. Azure OpenAI 호출로 reason[]을 자연어 문단으로 변환하나,
+운영 API의 xai_summary/key_evidence/decision_reason은 BE 규칙 기반 enrich가 제공합니다.
+"""
 from __future__ import annotations
 
 from ai_ml.common import azure_chat_client, chat_deployment

@@ -71,6 +71,9 @@ def prompt_log_row_to_dict(row: PromptLogRow) -> dict[str, Any]:
         "secret_detected": bool(row.secret_detected),
         "hr_detected": bool(row.hr_detected),
         "exposure_detected": bool(row.exposure_detected),
+        "cluster_id": row.cluster_id,
+        "sub_cluster_id": row.cluster_id,
+        "pattern_label": row.pattern_label,
     }
 
 

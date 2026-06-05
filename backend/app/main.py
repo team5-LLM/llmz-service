@@ -383,7 +383,7 @@ def get_risk_overview(
     to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
     month: Optional[str] = Query(default=None, description="YYYY-MM"),
 ):
-    """SCR-RISK-001 — Critical/High 부서 요약 (§5.1)."""
+    """SCR-RISK-001 — 등급별 부서 요약 + 전체 부서 목록 (§5.1)."""
     date_range = _resolve_history_date_range(from_date, to_date, month)
     return RiskOverviewResponse(**risk_svc.get_risk_overview(date_range))
 
@@ -605,7 +605,7 @@ def get_recommendations(
     to_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
     month: Optional[str] = Query(default=None, description="YYYY-MM"),
 ):
-    """전체 자동화 추천 카드 목록 조회 (Azure SQL recommendations)."""
+    """전체 자동화 추천 카드 — cluster_recommendations DB 우선, 없으면 prompt_logs 재집계."""
     date_range = _resolve_history_date_range(from_date, to_date, month)
     items = recommendation_svc.get_recommendations(date_range)
     return {
