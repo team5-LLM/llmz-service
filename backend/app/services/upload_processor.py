@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
+from uuid import uuid4
 
 from app.db.blob import delete_blob, is_storage_configured, upload_csv_bytes
 from app.models.upload_history import ValidationErrorItem
@@ -20,6 +21,59 @@ _ERR_NO_LOGS = "No parseable log rows (created_at)"
 _ERR_ANALYSIS = "Analysis processing error"
 _ERR_PERSIST = "Failed to save analysis results. Verify DB connection."
 
+_SUM_KEYS_INT = (
+    "masked_logs",
+    "no_sensitive_logs",
+    "rejected_logs",
+    "cluster_count",
+    "recommendation_count",
+)
+
+
+def _format_month_scope(months: list[str]) -> str:
+    if not months:
+        return "ALL"
+    ordered = sorted(months)
+    if len(ordered) == 1:
+        return ordered[0]
+    return f"{ordered[0]}~{ordered[-1]}"
+
+
+def _merge_summaries(summaries: list[dict]) -> dict:
+    if not summaries:
+        return {}
+    total_logs = 0
+    weighted_risk = 0.0
+    total_cost = 0.0
+    max_departments = 0
+    merged: dict = {key: 0 for key in _SUM_KEYS_INT}
+
+    for summary in summaries:
+        logs = int(summary.get("total_logs", 0) or 0)
+        total_logs += logs
+        weighted_risk += float(summary.get("avg_risk_score", 0) or 0) * logs
+        total_cost += float(summary.get("total_cost", 0) or 0)
+        max_departments = max(max_departments, int(summary.get("departments", 0) or 0))
+        for key in _SUM_KEYS_INT:
+            merged[key] += int(summary.get(key, 0) or 0)
+
+    merged["total_logs"] = total_logs
+    merged["total_cost"] = total_cost
+    merged["departments"] = max_departments
+    merged["avg_risk_score"] = weighted_risk / total_logs if total_logs else 0.0
+    return merged
+
+
+def _require_active_job(job_upload_id: str):
+    """
+    upload_history 행이 없으면 reset 등으로 job이 취소된 상태.
+    이 경우 DB에 다시 쓰지 않고 중단한다 (_upsert가 삭제된 id를 재생성하는 것 방지).
+    """
+    doc = history_svc.get_upload(job_upload_id)
+    if doc is None:
+        logger.info("업로드 job 중단 — 이력 삭제됨 (upload_id=%s)", job_upload_id)
+    return doc
+
 
 def process_upload_job(
     *,
@@ -31,19 +85,20 @@ def process_upload_job(
     started_monotonic: float,
 ) -> None:
     """동기 분석 파이프라인 — ThreadPool에서 실행."""
-    primary_doc = history_svc.get_upload(job_upload_id)
-    if primary_doc is None:
-        logger.error("업로드 job 없음 (upload_id=%s)", job_upload_id)
+    if _require_active_job(job_upload_id) is None:
         return
 
     blob_name: str | None = None
-    blob_owner_doc = primary_doc
+    blob_owner_id = job_upload_id
     use_primary = True
 
     try:
         try:
             result = analyze_csv_file(tmp_path)
         except CsvValidationError as exc:
+            primary_doc = _require_active_job(job_upload_id)
+            if primary_doc is None:
+                return
             errors = [ValidationErrorItem(row_index=exc.row_index, errors=exc.errors)]
             history_svc.attach_validation_errors(primary_doc, errors)
             history_svc.mark_validation_failed(
@@ -51,6 +106,10 @@ def process_upload_job(
                 errors=errors,
                 error_message=str(exc),
             )
+            return
+
+        primary_doc = _require_active_job(job_upload_id)
+        if primary_doc is None:
             return
 
         monthly = split_analysis_result_by_month(result)
@@ -61,56 +120,61 @@ def process_upload_job(
         duration_ms = int((time.monotonic() - started_monotonic) * 1000)
         upload_ids: list[str] = []
         log_months: list[str] = []
+        month_summaries: list[dict] = []
 
         for month, month_result in monthly.items():
+            primary_doc = _require_active_job(job_upload_id)
+            if primary_doc is None:
+                return
+
             if use_primary:
-                history_doc = primary_doc
-                history_doc.department_scope = month
-                history_doc.file_content_sha256 = file_hash
+                persist_upload_id = job_upload_id
+                primary_doc.file_content_sha256 = file_hash
                 use_primary = False
             else:
-                history_doc = history_svc.create_upload(
-                    filename=filename,
-                    uploaded_by="anonymous",
-                    department_scope=month,
-                    file_content_sha256=file_hash,
-                )
+                persist_upload_id = str(uuid4())
 
-            if blob_owner_doc.upload_id == history_doc.upload_id:
+            if persist_upload_id == blob_owner_id and blob_name is None:
                 if is_storage_configured():
                     try:
                         blob_path, blob_name = upload_csv_bytes(
-                            upload_id=history_doc.upload_id,
+                            upload_id=persist_upload_id,
                             filename=filename,
                             data=content,
                         )
-                        history_svc.record_blob_path(history_doc, blob_path)
+                        history_svc.record_blob_path(primary_doc, blob_path)
                     except Exception as exc:
                         logger.warning(
                             "Blob 업로드 실패 — SQL persist만 진행 (upload_id=%s): %s",
-                            history_doc.upload_id,
+                            persist_upload_id,
                             exc,
                         )
                         blob_name = None
 
-            history_svc.mark_processing(history_doc, message="분석 중")
             summary = month_result.get("summary", {})
-            total_rows = int(summary.get("total_logs", 0))
-
-            if not persist_analysis_result(history_doc.upload_id, month_result):
-                history_svc.mark_failed(history_doc, error_message=_ERR_PERSIST)
+            if not persist_analysis_result(persist_upload_id, month_result):
+                history_svc.mark_failed(primary_doc, error_message=_ERR_PERSIST)
                 return
 
-            history_svc.mark_completed(
-                history_doc,
-                summary=summary,
-                total_rows=total_rows,
-                valid_rows=total_rows,
-                invalid_rows=0,
-                duration_ms=duration_ms,
-            )
-            upload_ids.append(history_doc.upload_id)
+            upload_ids.append(persist_upload_id)
             log_months.append(month)
+            month_summaries.append(summary)
+
+        primary_doc = _require_active_job(job_upload_id)
+        if primary_doc is None:
+            return
+
+        aggregated = _merge_summaries(month_summaries)
+        total_rows = int(aggregated.get("total_logs", 0))
+        primary_doc.department_scope = _format_month_scope(log_months)
+        history_svc.mark_completed(
+            primary_doc,
+            summary=aggregated,
+            total_rows=total_rows,
+            valid_rows=total_rows,
+            invalid_rows=0,
+            duration_ms=duration_ms,
+        )
 
         logger.info(
             "업로드 분석 완료 (job=%s, upload_ids=%s, months=%s)",
@@ -120,23 +184,27 @@ def process_upload_job(
         )
     except Exception as exc:
         logger.exception("업로드 분석 실패 (upload_id=%s): %s", job_upload_id, exc)
-        history_svc.mark_failed(primary_doc, error_message=_ERR_ANALYSIS)
+        primary_doc = _require_active_job(job_upload_id)
+        if primary_doc is not None:
+            history_svc.mark_failed(primary_doc, error_message=_ERR_ANALYSIS)
     finally:
         try:
             tmp_path.unlink(missing_ok=True)
         except Exception:
             pass
 
-        if blob_name and is_storage_configured() and blob_owner_doc is not None:
-            try:
-                delete_blob(blob_name)
-                history_svc.record_blob_purged(blob_owner_doc)
-            except Exception as exc:
-                logger.warning(
-                    "Blob 삭제 실패 (upload_id=%s): %s",
-                    blob_owner_doc.upload_id,
-                    exc,
-                )
+        if blob_name and is_storage_configured():
+            blob_owner_doc = _require_active_job(blob_owner_id)
+            if blob_owner_doc is not None:
+                try:
+                    delete_blob(blob_name)
+                    history_svc.record_blob_purged(blob_owner_doc)
+                except Exception as exc:
+                    logger.warning(
+                        "Blob 삭제 실패 (upload_id=%s): %s",
+                        blob_owner_id,
+                        exc,
+                    )
 
 
 async def schedule_upload_job(
@@ -161,6 +229,6 @@ async def schedule_upload_job(
         )
     except Exception as exc:
         logger.exception("백그라운드 업로드 job 실패 (upload_id=%s): %s", job_upload_id, exc)
-        doc = history_svc.get_upload(job_upload_id)
+        doc = _require_active_job(job_upload_id)
         if doc is not None:
             history_svc.mark_failed(doc, error_message=_ERR_ANALYSIS)

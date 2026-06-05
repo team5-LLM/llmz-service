@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 from typing import List, Literal, Optional
 
 from sqlalchemy import func, select
@@ -33,6 +35,9 @@ from app.models.upload_history_table import UploadHistoryRow
 from app.utils.date_range import DateRange
 
 logger = logging.getLogger(__name__)
+
+# 월별 split 자식 이력(legacy) — 같은 job 으로 묶는 시간 창
+_SPLIT_DEDUP_WINDOW_SEC = 600
 
 # summary API by_status 집계 대상
 SUMMARY_STATUSES = (
@@ -101,6 +106,55 @@ def _status_value(status) -> str:
     return str(status)
 
 # list / count / summary — 동일 WHERE (페이징 total 일치 보장)
+def _parse_uploaded_at(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _dedupe_monthly_split_rows(docs: List[UploadHistoryDoc]) -> List[UploadHistoryDoc]:
+    """
+    월별 split 시 생성된 자식 upload_history 행을 목록에서 숨김.
+    동일 file_hash + filename 이 짧은 시간 안에 여러 건이면 가장 이른 1건만 유지.
+    """
+    if len(docs) <= 1:
+        return docs
+
+    groups: dict[tuple[str, str], list[UploadHistoryDoc]] = defaultdict(list)
+    for doc in docs:
+        if (
+            doc.file_content_sha256
+            and doc.status == UploadStatus.COMPLETED.value
+        ):
+            groups[(doc.file_content_sha256, doc.filename)].append(doc)
+
+    suppress_ids: set[str] = set()
+    for group in groups.values():
+        if len(group) <= 1:
+            continue
+
+        ordered = sorted(group, key=lambda item: item.uploaded_at)
+        cluster = [ordered[0]]
+        anchor = _parse_uploaded_at(ordered[0].uploaded_at)
+
+        for doc in ordered[1:]:
+            ts = _parse_uploaded_at(doc.uploaded_at)
+            if (ts - anchor).total_seconds() <= _SPLIT_DEDUP_WINDOW_SEC:
+                cluster.append(doc)
+            else:
+                if len(cluster) > 1:
+                    for dup in cluster[1:]:
+                        suppress_ids.add(dup.upload_id)
+                cluster = [doc]
+                anchor = ts
+
+        if len(cluster) > 1:
+            for dup in cluster[1:]:
+                suppress_ids.add(dup.upload_id)
+
+    if not suppress_ids:
+        return docs
+    return [doc for doc in docs if doc.upload_id not in suppress_ids]
+
+
 def _apply_filters(query, filters: UploadHistoryFilters):
     """공통 WHERE 조건 — list/count/summary 집계에 동일 적용."""
     if filters.filename_q:
@@ -361,7 +415,8 @@ def list_uploads(
         query = select(UploadHistoryRow).order_by(UploadHistoryRow.uploaded_at.desc())
         query = _apply_filters(query, filters)
         rows = session.scalars(query.offset(int(skip)).limit(int(limit))).all()
-        return [_row_to_doc(row) for row in rows]
+        docs = [_row_to_doc(row) for row in rows]
+        return _dedupe_monthly_split_rows(docs)
     except SQLAlchemyError as exc:
         logger.error("list_uploads 실패: %s", exc)
         return []

@@ -15,9 +15,18 @@ from app.models.analysis_result_tables import (
     PromptLogRow,
     RecommendationRow,
 )
+from app.models.upload_history import UploadStatus
 from app.models.upload_history_table import UploadHistoryRow
 
 logger = logging.getLogger(__name__)
+
+_IN_PROGRESS_STATUSES = (
+    UploadStatus.PENDING.value,
+    UploadStatus.PROCESSING.value,
+    UploadStatus.MASKING.value,
+    UploadStatus.CLASSIFYING.value,
+    UploadStatus.SCORING.value,
+)
 
 _RESET_TABLES = (
     ("prompt_logs", PromptLogRow),
@@ -43,8 +52,17 @@ def reset_all_upload_data(*, purge_blobs: bool = True) -> dict[str, Any]:
         }
 
     deleted: dict[str, int] = {}
+    cancelled_in_progress = 0
     try:
         with session_scope() as session:
+            cancelled_in_progress = int(
+                session.scalar(
+                    select(func.count())
+                    .select_from(UploadHistoryRow)
+                    .where(UploadHistoryRow.status.in_(_IN_PROGRESS_STATUSES))
+                )
+                or 0
+            )
             for name, model in _RESET_TABLES:
                 result = session.execute(delete(model))
                 deleted[name] = int(result.rowcount or 0)
@@ -84,6 +102,7 @@ def reset_all_upload_data(*, purge_blobs: bool = True) -> dict[str, Any]:
         "ok": True,
         "deleted": deleted,
         "remaining": remaining,
+        "cancelled_in_progress_jobs": cancelled_in_progress,
         "blobs_deleted": blobs_deleted,
         "blob_purge": blob_message,
     }
