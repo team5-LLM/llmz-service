@@ -4,11 +4,22 @@ type Props = {
   data: Recommendation[]
 }
 
+const DECISION_LEVEL_ALIASES: Record<string, string> = {
+  recommended: 'proceed',
+  conditional: 'review',
+  security_review: 'review',
+  later: 'review',
+  hold: 'review',
+}
+
 const DECISION_BADGE: Record<string, string> = {
   proceed: 'bg-risk-low',
   review: 'bg-risk-medium',
   low_priority: 'bg-risk-high',
 }
+
+const resolveDecisionLevel = (level: string) =>
+  DECISION_LEVEL_ALIASES[level] ?? level
 
 const RecommendationDetailList = ({ data }: Props) => {
   return (
@@ -16,8 +27,15 @@ const RecommendationDetailList = ({ data }: Props) => {
       {data.map((item, index) => (
         <div key={index} className="bg-white rounded-lg p-[30px] flex flex-col gap-4">
           <div className="flex flex-row justify-between items-center">
-            <span className="font-bold text-lg text-black">{item.service_name}</span>
-            <span className={`inline-block px-3 py-1 rounded-sm text-sm ${DECISION_BADGE[item.decision_level] ?? 'bg-gray-100 text-gray-600'}`}>
+            <div className="flex flex-col gap-1">
+              <span className="font-bold text-lg text-black">{item.service_name}</span>
+              {(item.task_label_display ?? item.cluster_label) && (
+                <span className="text-sm text-gray-500">
+                  업무유형: {item.task_label_display ?? item.cluster_label}
+                </span>
+              )}
+            </div>
+            <span className={`inline-block px-3 py-1 rounded-sm text-sm ${DECISION_BADGE[resolveDecisionLevel(item.decision_level)] ?? 'bg-gray-100 text-gray-600'}`}>
               {item.decision}
             </span>
           </div>

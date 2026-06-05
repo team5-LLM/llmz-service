@@ -1,3 +1,10 @@
+"""
+[DEPRECATED — 런타임 미사용]
+
+AI/ML 연동 이후 업무유형 분류는 `ai_ml.privacy_pipeline` / `task_classifier`가 담당.
+표시용 한국어 매핑은 `app.utils.task_label_display` 참고.
+"""
+
 TASK_LABELS = [
     "보고서 작성형",
     "코드 생성형",

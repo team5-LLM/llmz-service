@@ -15,6 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.sql import safe_session
 from app.models.analysis_result_tables import (
+    ClusterRecommendationRow,
     DepartmentStatRow,
     PromptLogRow,
     RecommendationRow,
@@ -29,6 +30,7 @@ from app.schemas.dashboard import (
     TrendPoint,
 )
 from app.services.scoring import risk_level
+from app.utils.task_label_display import task_label_display
 from app.services.analysis_pipeline import (
     build_department_stats,
     build_recommendations,
@@ -72,6 +74,177 @@ def prompt_log_row_to_dict(row: PromptLogRow) -> dict[str, Any]:
     }
 
 
+def _latest_completed_upload_id(session) -> Optional[str]:
+    """전체 기간 중 가장 최근 completed upload_id (996c658 fallback)."""
+    return session.scalar(
+        select(UploadHistoryRow.upload_id)
+        .where(UploadHistoryRow.status == _COMPLETED)
+        .order_by(UploadHistoryRow.uploaded_at.desc())
+        .limit(1)
+    )
+
+
+def _query_prompt_logs_in_created_at_range(
+    session,
+    date_range: DateRange,
+    *,
+    department: Optional[str] = None,
+) -> List[PromptLogRow]:
+    completed_ids = select(UploadHistoryRow.upload_id).where(
+        UploadHistoryRow.status == _COMPLETED
+    )
+    query = (
+        select(PromptLogRow)
+        .where(PromptLogRow.upload_id.in_(completed_ids))
+        .where(PromptLogRow.created_at >= date_range.from_date)
+        .where(PromptLogRow.created_at < date_range.from_date_exclusive_upper)
+    )
+    if department is not None:
+        query = query.where(PromptLogRow.department == department)
+    return list(session.scalars(query).all())
+
+
+def _query_prompt_logs_for_upload(
+    session,
+    upload_id: str,
+    *,
+    department: Optional[str] = None,
+) -> List[PromptLogRow]:
+    query = select(PromptLogRow).where(PromptLogRow.upload_id == upload_id)
+    if department is not None:
+        query = query.where(PromptLogRow.department == department)
+    return list(session.scalars(query).all())
+
+
+def _fetch_prompt_logs_strict_created_at(
+    date_range: DateRange,
+    *,
+    department: Optional[str] = None,
+) -> List[PromptLogRow]:
+    """created_at 기간만 조회 — upload 단위 log fallback 없음 (대시보드 primary용)."""
+    session = safe_session()
+    if session is None:
+        return []
+
+    try:
+        return _query_prompt_logs_in_created_at_range(
+            session,
+            date_range,
+            department=department,
+        )
+    except SQLAlchemyError as exc:
+        logger.error("_fetch_prompt_logs_strict_created_at 실패: %s", exc)
+        return []
+    finally:
+        session.close()
+
+
+def _completed_upload_ids_by_uploaded_at(
+    session,
+    date_range: DateRange,
+) -> List[str]:
+    """upload_history.uploaded_at 기간 내 completed upload_id (최신순)."""
+    return list(
+        session.scalars(
+            select(UploadHistoryRow.upload_id)
+            .where(UploadHistoryRow.status == _COMPLETED)
+            .where(UploadHistoryRow.uploaded_at >= date_range.from_date)
+            .where(UploadHistoryRow.uploaded_at < date_range.from_date_exclusive_upper)
+            .order_by(UploadHistoryRow.uploaded_at.desc())
+        ).all()
+    )
+
+
+def _resolve_snapshot_upload_ids(date_range: DateRange) -> List[str]:
+    """
+    스냅샷 fallback용 upload_id — uploaded_at 기간 내 completed, 없으면 최신 1건 (996c658).
+    """
+    session = safe_session()
+    if session is None:
+        return []
+
+    try:
+        upload_ids = _completed_upload_ids_by_uploaded_at(session, date_range)
+        if upload_ids:
+            return upload_ids
+
+        fallback_upload_id = _latest_completed_upload_id(session)
+        if fallback_upload_id is None:
+            return []
+
+        logger.info(
+            "스냅샷 fallback — 기간 %s~%s 내 uploaded_at completed 없음, 최신 1건 (upload_id=%s)",
+            date_range.from_date,
+            date_range.to_date,
+            fallback_upload_id,
+        )
+        return [fallback_upload_id]
+    except SQLAlchemyError as exc:
+        logger.error("_resolve_snapshot_upload_ids 실패: %s", exc)
+        return []
+    finally:
+        session.close()
+
+
+def _get_dashboard_summary_from_snapshots(date_range: DateRange) -> UploadSummary:
+    """upload_history.summary_json 스냅샷 집계 (hybrid fallback)."""
+    upload_ids = _resolve_snapshot_upload_ids(date_range)
+    if not upload_ids:
+        return UploadSummary()
+
+    session = safe_session()
+    if session is None:
+        return UploadSummary()
+
+    try:
+        rows = session.scalars(
+            select(UploadHistoryRow).where(
+                UploadHistoryRow.upload_id.in_(upload_ids)
+            )
+        ).all()
+        summaries = [
+            parsed
+            for row in rows
+            if (parsed := _load_summary_json(row.summary_json)) is not None
+        ]
+        return _merge_summaries(summaries)
+    except SQLAlchemyError as exc:
+        logger.error("_get_dashboard_summary_from_snapshots 실패: %s", exc)
+        return UploadSummary()
+    finally:
+        session.close()
+
+
+def _get_dashboard_departments_from_snapshots(
+    date_range: DateRange,
+) -> List[DepartmentStatItem]:
+    """department_stats 테이블 스냅샷 병합 (hybrid fallback)."""
+    upload_ids = _resolve_snapshot_upload_ids(date_range)
+    if not upload_ids:
+        return []
+
+    session = safe_session()
+    if session is None:
+        return []
+
+    try:
+        rows = session.scalars(
+            select(DepartmentStatRow).where(
+                DepartmentStatRow.upload_id.in_(upload_ids)
+            )
+        ).all()
+        if not rows:
+            return []
+
+        merge_inputs = [_row_to_merge_dict(row) for row in rows]
+        return _merge_department_stats(merge_inputs)
+    except SQLAlchemyError as exc:
+        logger.error("_get_dashboard_departments_from_snapshots 실패: %s", exc)
+        return []
+    finally:
+        session.close()
+
+
 def fetch_prompt_log_rows_in_range(
     date_range: DateRange,
     *,
@@ -79,6 +252,7 @@ def fetch_prompt_log_rows_in_range(
 ) -> List[PromptLogRow]:
     """
     completed 업로드의 prompt_logs 중 created_at 이 기간 내인 행.
+    기간 내 로그가 없으면 최신 completed 1건의 전체 로그로 fallback (996c658).
     대시보드·Risk·추천·반복패턴 공통 데이터 소스.
     """
     session = safe_session()
@@ -87,18 +261,29 @@ def fetch_prompt_log_rows_in_range(
         return []
 
     try:
-        completed_ids = select(UploadHistoryRow.upload_id).where(
-            UploadHistoryRow.status == _COMPLETED
+        rows = _query_prompt_logs_in_created_at_range(
+            session,
+            date_range,
+            department=department,
         )
-        query = (
-            select(PromptLogRow)
-            .where(PromptLogRow.upload_id.in_(completed_ids))
-            .where(PromptLogRow.created_at >= date_range.from_date)
-            .where(PromptLogRow.created_at < date_range.from_date_exclusive_upper)
+        if rows:
+            return rows
+
+        fallback_upload_id = _latest_completed_upload_id(session)
+        if fallback_upload_id is None:
+            return []
+
+        logger.info(
+            "기간 %s~%s 내 prompt_logs 없음 — 최신 completed 1건 사용 (upload_id=%s)",
+            date_range.from_date,
+            date_range.to_date,
+            fallback_upload_id,
         )
-        if department is not None:
-            query = query.where(PromptLogRow.department == department)
-        return list(session.scalars(query).all())
+        return _query_prompt_logs_for_upload(
+            session,
+            fallback_upload_id,
+            department=department,
+        )
     except SQLAlchemyError as exc:
         logger.error("fetch_prompt_log_rows_in_range 실패: %s", exc)
         return []
@@ -106,9 +291,39 @@ def fetch_prompt_log_rows_in_range(
         session.close()
 
 
+def fetch_cluster_recommendation_rows_in_range(
+    date_range: DateRange,
+    *,
+    department: Optional[str] = None,
+) -> List[ClusterRecommendationRow]:
+    """기간 내 completed 업로드의 AI/ML cluster_recommendations."""
+    session = safe_session()
+    if session is None:
+        logger.warning("SQL 미설정 — fetch_cluster_recommendation_rows_in_range 빈 결과")
+        return []
+
+    upload_ids = resolve_upload_ids(date_range)
+    if not upload_ids:
+        return []
+
+    try:
+        query = select(ClusterRecommendationRow).where(
+            ClusterRecommendationRow.upload_id.in_(upload_ids)
+        )
+        if department is not None:
+            query = query.where(ClusterRecommendationRow.department == department)
+        return list(session.scalars(query).all())
+    except SQLAlchemyError as exc:
+        logger.error("fetch_cluster_recommendation_rows_in_range 실패: %s", exc)
+        return []
+    finally:
+        session.close()
+
+
 def resolve_upload_ids(date_range: DateRange) -> List[str]:
     """
-    기간 내 prompt_logs.created_at 에 해당하는 completed upload_id (중복 제거).
+    fetch_prompt_log_rows_in_range 결과에서 upload_id 추출 (중복 제거).
+    기간 내 로그 없을 때는 fallback upload_id 1건.
     """
     rows = fetch_prompt_log_rows_in_range(date_range)
     seen: set[str] = set()
@@ -163,17 +378,22 @@ def _merge_summaries(summaries: List[UploadSummary]) -> UploadSummary:
 
 def get_dashboard_summary(date_range: DateRange) -> UploadSummary:
     """
-    KPI 3카드 summary — prompt_logs.created_at 기간 필터 후 재집계.
+    KPI 3카드 summary — hybrid.
+
+    1) primary: prompt_logs.created_at 기간 재집계
+    2) fallback: upload_history.summary_json 스냅샷 (uploaded_at 기간 → 최신 completed)
     """
-    rows = fetch_prompt_log_rows_in_range(date_range)
-    if not rows:
-        return UploadSummary()
+    rows = _fetch_prompt_logs_strict_created_at(date_range)
+    if rows:
+        import pandas as pd
 
-    import pandas as pd
+        log_dicts = [prompt_log_row_to_dict(row) for row in rows]
+        summary = build_summary_from_dataframe(pd.DataFrame(log_dicts))
+        validated = UploadSummary.model_validate(summary)
+        if validated.total_logs > 0:
+            return validated
 
-    log_dicts = [prompt_log_row_to_dict(row) for row in rows]
-    summary = build_summary_from_dataframe(pd.DataFrame(log_dicts))
-    return UploadSummary.model_validate(summary)
+    return _get_dashboard_summary_from_snapshots(date_range)
 
 
 def _load_task_distribution(raw: str | None) -> List[dict[str, Any]]:
@@ -204,6 +424,7 @@ def _normalize_task_distribution(items: List[dict[str, Any]]) -> List[TaskDistri
     return [
         TaskDistributionItem(
             label=label,
+            label_display=task_label_display(label),
             count=count,
             ratio=round(count / total, 4),
         )
@@ -302,17 +523,22 @@ def _department_stat_dicts_to_items(stats: List[dict[str, Any]]) -> List[Departm
 
 def get_dashboard_departments(date_range: DateRange) -> List[DepartmentStatItem]:
     """
-    §3.3 department_stats[] — prompt_logs.created_at 기간 필터 후 재집계.
+    §3.3 department_stats[] — hybrid.
+
+    1) primary: prompt_logs.created_at 기간 재집계
+    2) fallback: department_stats 스냅샷 (uploaded_at 기간 → 최신 completed)
     """
-    rows = fetch_prompt_log_rows_in_range(date_range)
-    if not rows:
-        return []
+    rows = _fetch_prompt_logs_strict_created_at(date_range)
+    if rows:
+        import pandas as pd
 
-    import pandas as pd
+        log_dicts = [prompt_log_row_to_dict(row) for row in rows]
+        stats = build_department_stats(pd.DataFrame(log_dicts))
+        items = _department_stat_dicts_to_items(stats)
+        if items:
+            return items
 
-    log_dicts = [prompt_log_row_to_dict(row) for row in rows]
-    stats = build_department_stats(pd.DataFrame(log_dicts))
-    return _department_stat_dicts_to_items(stats)
+    return _get_dashboard_departments_from_snapshots(date_range)
 
 
 Granularity = Literal["daily", "weekly", "monthly"]
@@ -447,6 +673,7 @@ def _build_tasks_by_priority(
         items.append(
             TaskPriorityItem(
                 task_label=task_label,
+                task_label_display=task_label_display(task_label),
                 count=count,
                 ratio=ratio,
                 opportunity_score=opportunity,

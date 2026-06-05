@@ -24,7 +24,8 @@ upload_history (1 CSV → N행 가능, created_at 월별 split)
 | 물리 FK | 미선언 (앱 레벨 연결) |
 | 원문 | `prompt_text` **DB·API 미저장** — `prompt_logs.masked_prompt` 만 |
 | 월별 업로드 | 한 CSV에 여러 달 로그 → **`upload_id`·`department_scope=YYYY-MM` 별로 분리** persist |
-| 대시보드·Risk·추천 집계 | `prompt_logs.created_at` 기간 필터 (**`uploaded_at` 아님**) |
+| 대시보드 KPI·부서 (`get_dashboard_summary` / `get_dashboard_departments`) | **primary** `prompt_logs.created_at` 재집계 → **빈 결과 시** `summary_json`·`department_stats` 스냅샷 fallback (`uploaded_at` 기간 → 최신 completed) |
+| Risk·추천·반복패턴 | `prompt_logs.created_at` 기간 필터 + 최신 completed log fallback |
 | 이력·DateFilter(관리) | `upload_history.uploaded_at` = 파일을 올린 시각 |
 | 중복 파일 | `file_content_sha256` — **completed** 동일 해시 재업로드 시 **409** (분석·INSERT 안 함) |
 

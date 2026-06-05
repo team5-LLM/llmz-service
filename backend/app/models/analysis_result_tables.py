@@ -62,6 +62,40 @@ class RecommendationRow(Base):
     reason_json: Mapped[str] = mapped_column(UnicodeText, nullable=False, default="[]")
 
 
+class ClusterRecommendationRow(Base):
+    """AI/ML cluster_recommendations 영속화."""
+
+    __tablename__ = "cluster_recommendations"
+    __table_args__ = (
+        Index("ix_cluster_recommendations_upload_id", "upload_id"),
+        UniqueConstraint(
+            "upload_id",
+            "department",
+            "sub_cluster_id",
+            name="uq_cluster_recommendations_upload_dept_cluster",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    upload_id: Mapped[str] = mapped_column(Unicode(36), nullable=False)
+    department: Mapped[str] = mapped_column(Unicode(128), nullable=False)
+    sub_cluster_id: Mapped[str] = mapped_column(Unicode(128), nullable=False)
+
+    recommendation_title: Mapped[str] = mapped_column(Unicode(256), nullable=False)
+    automation_candidate_type: Mapped[str] = mapped_column(Unicode(64), nullable=False)
+    macro_category: Mapped[str] = mapped_column(Unicode(64), nullable=False)
+    opportunity_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    risk_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    decision: Mapped[str] = mapped_column(Unicode(64), nullable=False)
+    summary: Mapped[str] = mapped_column(UnicodeText, nullable=False, default="")
+    expected_effect_json: Mapped[str] = mapped_column(UnicodeText, nullable=False, default="[]")
+    security_guardrails_json: Mapped[str] = mapped_column(UnicodeText, nullable=False, default="[]")
+    implementation_difficulty: Mapped[str] = mapped_column(Unicode(16), nullable=False)
+    priority_reason: Mapped[str] = mapped_column(UnicodeText, nullable=False, default="")
+    source_cluster_label: Mapped[str] = mapped_column(Unicode(256), nullable=False, default="")
+    method: Mapped[str] = mapped_column(Unicode(16), nullable=False, default="rule")
+
+
 class PromptLogRow(Base):
     __tablename__ = "prompt_logs"
     __table_args__ = (

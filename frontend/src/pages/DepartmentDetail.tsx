@@ -21,7 +21,7 @@ const DepartmentDetail = () => {
   const month = searchParams.get('month') ?? undefined
 
   const [allDepts, setAllDepts] = useState<DepartmentStat[]>([])
-  const [overview, setOverview] = useState({ total_tokens: 0, total_cost: 0, user_count: 0, task_distribution: [] as { label: string; count: number; ratio: number }[] })
+  const [overview, setOverview] = useState({ total_tokens: 0, total_cost: 0, user_count: 0, task_distribution: [] as { label: string; label_display?: string; count: number; ratio: number }[] })
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
 
   // 드롭다운 목록: month가 바뀔 때
@@ -43,8 +43,9 @@ const DepartmentDetail = () => {
           total_tokens: res.overview.total_tokens,
           total_cost: res.overview.total_cost,
           user_count: res.overview.user_count,
-          task_distribution: (res.tasks_by_priority ?? []).map((t: { task_label: string; count: number; ratio: number }) => ({
+          task_distribution: (res.tasks_by_priority ?? []).map((t: { task_label: string; task_label_display?: string; count: number; ratio: number }) => ({
             label: t.task_label,
+            label_display: t.task_label_display,
             count: t.count,
             ratio: t.ratio / 100,  // tasks_by_priority ratio는 0~100 단위 → 0~1로 변환
           })),

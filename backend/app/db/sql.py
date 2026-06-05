@@ -125,6 +125,7 @@ def init_db() -> bool:
 
     try:
         from app.models.analysis_result_tables import (  # noqa: F401
+            ClusterRecommendationRow,
             DepartmentStatRow,
             PromptLogRow,
             RecommendationRow,

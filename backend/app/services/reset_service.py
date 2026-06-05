@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.blob import is_storage_configured, purge_upload_container
 from app.db.sql import SqlUnavailableError, is_sql_configured, session_scope
 from app.models.analysis_result_tables import (
+    ClusterRecommendationRow,
     DepartmentStatRow,
     PromptLogRow,
     RecommendationRow,
@@ -30,6 +31,7 @@ _IN_PROGRESS_STATUSES = (
 
 _RESET_TABLES = (
     ("prompt_logs", PromptLogRow),
+    ("cluster_recommendations", ClusterRecommendationRow),
     ("recommendations", RecommendationRow),
     ("department_stats", DepartmentStatRow),
     ("upload_history", UploadHistoryRow),

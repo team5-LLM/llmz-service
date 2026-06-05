@@ -16,6 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.sql import safe_session
 from app.models.analysis_result_tables import (
+    ClusterRecommendationRow,
     DepartmentStatRow,
     PromptLogRow,
     RecommendationRow,
@@ -45,6 +46,9 @@ def persist_analysis_result(upload_id: str, result: dict) -> bool:
         session.query(DepartmentStatRow).filter(
             DepartmentStatRow.upload_id == upload_id
         ).delete()
+        session.query(ClusterRecommendationRow).filter(
+            ClusterRecommendationRow.upload_id == upload_id
+        ).delete()
 
         for stat in result.get("department_stats", []):
             session.add(
@@ -59,6 +63,30 @@ def persist_analysis_result(upload_id: str, result: dict) -> bool:
                     risk_level=str(stat["risk_level"]),
                     high_critical_ratio=float(stat["high_critical_ratio"]),
                     task_distribution_json=_dump_json(stat.get("task_distribution", [])),
+                )
+            )
+
+        for card in result.get("cluster_recommendations", []):
+            expected_effect = card.get("expected_effect", [])
+            guardrails = card.get("security_guardrails", [])
+            session.add(
+                ClusterRecommendationRow(
+                    upload_id=upload_id,
+                    department=str(card["department"]),
+                    sub_cluster_id=str(card["sub_cluster_id"]),
+                    recommendation_title=str(card.get("recommendation_title", "")),
+                    automation_candidate_type=str(card.get("automation_candidate_type", "")),
+                    macro_category=str(card.get("macro_category", "")),
+                    opportunity_score=int(card.get("opportunity_score", 0) or 0),
+                    risk_score=float(card.get("risk_score", 0) or 0),
+                    decision=str(card.get("decision", "")),
+                    summary=str(card.get("summary", "")),
+                    expected_effect_json=_dump_json(expected_effect),
+                    security_guardrails_json=_dump_json(guardrails),
+                    implementation_difficulty=str(card.get("implementation_difficulty", "Medium")),
+                    priority_reason=str(card.get("priority_reason", "")),
+                    source_cluster_label=str(card.get("source_cluster_label", "")),
+                    method=str(card.get("method", "rule")),
                 )
             )
 
@@ -118,9 +146,10 @@ def persist_analysis_result(upload_id: str, result: dict) -> bool:
 
         session.commit()
         logger.info(
-            "persist_analysis_result 완료 (upload_id=%s, stats=%s, recs=%s, logs=%s)",
+            "persist_analysis_result 완료 (upload_id=%s, stats=%s, cluster_recs=%s, recs=%s, logs=%s)",
             upload_id,
             len(result.get("department_stats", [])),
+            len(result.get("cluster_recommendations", [])),
             len(result.get("recommendations", [])),
             len(result.get("masked_logs", [])),
         )

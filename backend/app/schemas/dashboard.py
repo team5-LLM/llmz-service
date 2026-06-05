@@ -21,6 +21,7 @@ class DashboardSummaryResponse(BaseModel):
 
 class TaskDistributionItem(BaseModel):
     label: str
+    label_display: str
     count: int
     ratio: float  # dashboard API: 0~1
 
@@ -71,6 +72,7 @@ class TaskPriorityItem(BaseModel):
     """§6.12 — 업무유형 우선순위 (ratio는 0~100 %)."""
 
     task_label: str
+    task_label_display: str
     count: int
     ratio: float
     opportunity_score: int

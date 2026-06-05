@@ -9,7 +9,7 @@ export interface DepartmentStat {
   avg_risk_score: number
   risk_level: RiskLevel
   high_critical_ratio: number
-  task_distribution: { label: string; count: number; ratio: number }[]
+  task_distribution: { label: string; label_display?: string; count: number; ratio: number }[]
 }
 
 export interface Summary {
@@ -23,6 +23,7 @@ export interface Summary {
 export interface Recommendation {
   department: string
   task_label: string
+  task_label_display?: string
   service_name: string
   expected_effect: string
   difficulty: string
@@ -35,6 +36,9 @@ export interface Recommendation {
   decision_message: string
   required_action: string
   reason: { factor: string; value: number; unit: string; description: string }[]
+  recommendation_source?: 'cluster' | 'task'
+  cluster_label?: string
+  summary?: string
 }
 
 export interface AnalysisResult {

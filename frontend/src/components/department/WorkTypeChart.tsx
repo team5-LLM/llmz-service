@@ -3,6 +3,7 @@ import { WORK_TYPE_COLORS, COLORS } from '../../constants/colors'
 
 type TaskItem = {
   label: string
+  label_display?: string
   ratio: number
 }
 
@@ -11,12 +12,15 @@ type Props = {
 }
 
 const WorkTypeChart = ({ data }: Props) => {
-  const chartData = data.map((task) => ({
-    label: task.label,
-    percentage: Math.round(task.ratio * 100),
-    color: WORK_TYPE_COLORS[task.label] ?? COLORS.gray100,
-    displayLabel: `${task.label} ${Math.round(task.ratio * 100)}%`,
-  }))
+  const chartData = data.map((task) => {
+    const display = task.label_display ?? task.label
+    return {
+      label: display,
+      percentage: Math.round(task.ratio * 100),
+      color: WORK_TYPE_COLORS[display] ?? WORK_TYPE_COLORS[task.label] ?? COLORS.gray100,
+      displayLabel: `${display} ${Math.round(task.ratio * 100)}%`,
+    }
+  })
 
   return (
     // 가로 바 차트

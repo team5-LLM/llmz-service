@@ -14,12 +14,13 @@ const DepartmentWorkTypeChart = ({ data }: Props) => {
     const topTask = dept.task_distribution.reduce((a, b) =>
       a.ratio > b.ratio ? a : b
     )
+    const display = topTask.label_display ?? topTask.label
     const percentage = Math.round(topTask.ratio * 100)
     return {
       department: dept.department,
       percentage,
-      color: WORK_TYPE_COLORS[topTask.label] ?? DEFAULT_COLOR,
-      label: `${topTask.label} ${percentage}%`,
+      color: WORK_TYPE_COLORS[display] ?? WORK_TYPE_COLORS[topTask.label] ?? DEFAULT_COLOR,
+      label: `${display} ${percentage}%`,
     }
   })
 
