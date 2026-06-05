@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -170,21 +170,39 @@ def _upsert(doc: UploadHistoryDoc) -> Optional[UploadHistoryDoc]:
     finally:
         session.close()
 
+_IN_PROGRESS_STATUSES = frozenset({
+    UploadStatus.PENDING.value,
+    UploadStatus.PROCESSING.value,
+    UploadStatus.MASKING.value,
+    UploadStatus.CLASSIFYING.value,
+    UploadStatus.SCORING.value,
+})
+
+_BLOCKING_STATUSES = _IN_PROGRESS_STATUSES | {UploadStatus.COMPLETED.value}
+
+
 @dataclass(frozen=True)
 class ExistingFileUpload:
-    """동일 파일(SHA-256)로 이미 완료된 업로드 묶음."""
+    """동일 파일(SHA-256)로 업로드가 차단되는 기존 이력."""
 
     file_content_sha256: str
     filename: str
     uploaded_at: str
     upload_ids: List[str]
     log_months: List[str]
+    blocking_reason: Literal["in_progress", "completed"]
 
 
-def find_existing_completed_by_file_hash(
+def find_blocking_upload_by_file_hash(
     file_content_sha256: str,
 ) -> Optional[ExistingFileUpload]:
-    """completed 상태인 동일 해시 업로드가 있으면 요약 반환."""
+    """
+    동일 해시로 재업로드를 막아야 하는 이력이 있으면 요약 반환.
+
+    - in_progress: pending / processing 등 분석 진행 중
+    - completed: 이미 처리 완료
+    - failed 는 재시도 허용 → 조회 대상 아님
+    """
     session = safe_session()
     if session is None:
         return None
@@ -194,27 +212,42 @@ def find_existing_completed_by_file_hash(
             select(UploadHistoryRow)
             .where(
                 UploadHistoryRow.file_content_sha256 == file_content_sha256,
-                UploadHistoryRow.status == UploadStatus.COMPLETED.value,
+                UploadHistoryRow.status.in_(_BLOCKING_STATUSES),
             )
-            .order_by(UploadHistoryRow.department_scope.asc())
+            .order_by(UploadHistoryRow.uploaded_at.asc())
         )
         rows = session.scalars(query).all()
         if not rows:
             return None
 
-        first = rows[0]
+        in_progress = [r for r in rows if r.status in _IN_PROGRESS_STATUSES]
+        completed = [r for r in rows if r.status == UploadStatus.COMPLETED.value]
+        target_rows = in_progress if in_progress else completed
+        first = target_rows[0]
+
         return ExistingFileUpload(
             file_content_sha256=file_content_sha256,
             filename=first.filename,
-            uploaded_at=min(r.uploaded_at for r in rows),
-            upload_ids=[r.upload_id for r in rows],
-            log_months=[r.department_scope for r in rows],
+            uploaded_at=min(r.uploaded_at for r in target_rows),
+            upload_ids=[r.upload_id for r in target_rows],
+            log_months=[r.department_scope for r in target_rows],
+            blocking_reason="in_progress" if in_progress else "completed",
         )
     except SQLAlchemyError as exc:
         logger.warning("file hash 중복 조회 실패 — skip: %s", exc)
         return None
     finally:
         session.close()
+
+
+def find_existing_completed_by_file_hash(
+    file_content_sha256: str,
+) -> Optional[ExistingFileUpload]:
+    """하위 호환 — completed 차단만 조회."""
+    existing = find_blocking_upload_by_file_hash(file_content_sha256)
+    if existing is None or existing.blocking_reason != "completed":
+        return None
+    return existing
 
 
 # 업로드 시작 시점 호출

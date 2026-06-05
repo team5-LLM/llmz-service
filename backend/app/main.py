@@ -421,7 +421,7 @@ def get_risk_department_detail(
 @app.post("/api/upload", response_model=UploadAcceptedResponse, status_code=202)
 async def upload_csv(file: UploadFile = File(...)):
     """실행 흐름:
-        1) 파일 SHA-256 — completed 이력에 동일 해시 있으면 409
+        1) 파일 SHA-256 — completed 또는 processing/pending 동일 해시면 409
         2) tempfile 저장 + upload_history(processing) 생성 → 즉시 202 응답
         3) 백그라운드: analyze → 월별 split → persist → completed
         4) 상태 조회: GET /api/uploads/{upload_id} 또는 GET /api/uploads/history
@@ -430,6 +430,7 @@ async def upload_csv(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Only CSV files are allowed.")
 
     _ERR_DUPLICATE = "Duplicate file already processed"
+    _ERR_IN_PROGRESS = "File is already being processed"
     _ERR_DEDUP_CHECK = "Cannot check duplicate file. Verify DB connection."
 
     started = time.monotonic()
@@ -437,7 +438,7 @@ async def upload_csv(file: UploadFile = File(...)):
     file_hash = sha256_hex(content)
 
     try:
-        existing = history_svc.find_existing_completed_by_file_hash(file_hash)
+        existing = history_svc.find_blocking_upload_by_file_hash(file_hash)
     except Exception as exc:
         logger.error("파일 중복 검사 실패: %s", exc)
         raise HTTPException(
@@ -446,18 +447,24 @@ async def upload_csv(file: UploadFile = File(...)):
         ) from exc
 
     if existing is not None:
+        err_message = (
+            _ERR_IN_PROGRESS
+            if existing.blocking_reason == "in_progress"
+            else _ERR_DUPLICATE
+        )
         if is_sql_configured():
             dup_doc = history_svc.create_upload(
                 filename=file.filename,
                 uploaded_by="anonymous",
                 file_content_sha256=file_hash,
             )
-            history_svc.mark_failed(dup_doc, error_message=_ERR_DUPLICATE)
+            history_svc.mark_failed(dup_doc, error_message=err_message)
 
         raise HTTPException(
             status_code=409,
             detail={
-                "message": _ERR_DUPLICATE,
+                "message": err_message,
+                "blocking_reason": existing.blocking_reason,
                 "file_content_sha256": file_hash,
                 "existing_upload_id": existing.upload_ids[0],
                 "existing_upload_ids": existing.upload_ids,
