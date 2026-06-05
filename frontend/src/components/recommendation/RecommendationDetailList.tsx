@@ -7,7 +7,7 @@ type Props = {
 const DECISION_BADGE: Record<string, string> = {
   proceed: 'bg-risk-low',
   review: 'bg-risk-medium',
-  low_priority: 'bg-risk-high',
+  low_priority: 'bg-gray-100',
 }
 
 const RecommendationDetailList = ({ data }: Props) => {
