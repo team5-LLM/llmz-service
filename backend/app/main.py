@@ -436,6 +436,7 @@ async def upload_csv(file: UploadFile = File(...)):
     _ERR_DEDUP_CHECK = "Cannot check duplicate file. Verify DB connection."
     _ERR_NO_LOGS = "No parseable log rows (created_at)"
     _ERR_ANALYSIS = "Analysis processing error"
+    _ERR_PERSIST = "Failed to save analysis results. Verify DB connection."
 
     started = time.monotonic()
     content = await file.read()
@@ -547,6 +548,11 @@ async def upload_csv(file: UploadFile = File(...)):
             history_svc.mark_processing(history_doc)
             summary = month_result.get("summary", {})
             total_rows = int(summary.get("total_logs", 0))
+
+            if not persist_analysis_result(history_doc.upload_id, month_result):
+                history_svc.mark_failed(history_doc, error_message=_ERR_PERSIST)
+                raise HTTPException(status_code=503, detail=_ERR_PERSIST)
+
             history_svc.mark_completed(
                 history_doc,
                 summary=summary,
@@ -555,7 +561,6 @@ async def upload_csv(file: UploadFile = File(...)):
                 invalid_rows=0,
                 duration_ms=duration_ms,
             )
-            persist_analysis_result(history_doc.upload_id, month_result)
             upload_ids.append(history_doc.upload_id)
             log_months.append(month)
 
