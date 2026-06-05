@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 import tempfile
@@ -9,13 +10,11 @@ from typing import Optional
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db.blob import delete_blob, is_storage_configured, storage_status, upload_csv_bytes
+from app.db.blob import storage_status
 from app.db.sql import init_db, is_sql_configured, sql_status
-from app.models.upload_history import ValidationErrorItem
 from app.services import upload_history_service as history_svc
-from app.services.analysis_pipeline import analyze_csv_file, split_analysis_result_by_month
-from app.services.csv_loader import CsvValidationError
-from app.services.persistence_service import persist_analysis_result
+from app.services.analysis_pipeline import analyze_csv_file
+from app.services.upload_processor import schedule_upload_job
 from app.services.recommender import build_recommendation_detail
 from app.utils.datetime_display import format_datetime_kst
 from app.schemas.dashboard import (
@@ -25,6 +24,7 @@ from app.schemas.dashboard import (
     DashboardSummaryResponse,
 )
 from app.schemas.upload_history import (
+    UploadAcceptedResponse,
     UploadHistoryDetailResponse,
     UploadHistoryItem,
     UploadHistoryListResponse,
@@ -417,26 +417,20 @@ def get_risk_department_detail(
     return RiskDepartmentDetailResponse(**detail)
 
 
-# SCR-INPUT-004 데이터 입력 이력 목록 조회 API
-@app.post("/api/upload")
+# SCR-INPUT-004 CSV 업로드 — 파일 수신 즉시 응답, 분석은 백그라운드
+@app.post("/api/upload", response_model=UploadAcceptedResponse, status_code=202)
 async def upload_csv(file: UploadFile = File(...)):
     """실행 흐름:
         1) 파일 SHA-256 — completed 이력에 동일 해시 있으면 409
-        2) tempfile 저장 → analyze_csv_file → 결과 산출
-        3) masked_logs.created_at 월(YYYY-MM)별 split
-        4) 첫 upload_id 기준 Blob 1회 임시 업로드 → blob_path 기록
-        5) 월마다 upload_history INSERT (department_scope=월) + persist
-        6) 분석 완료 후 Blob 삭제 → blob_purged_at (첫 upload_id)
-        7) 응답: upload_ids[] · log_months[] (+ 하위호환 upload_id)
+        2) tempfile 저장 + upload_history(processing) 생성 → 즉시 202 응답
+        3) 백그라운드: analyze → 월별 split → persist → completed
+        4) 상태 조회: GET /api/uploads/{upload_id} 또는 GET /api/uploads/history
     """
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="Only CSV files are allowed.")
 
     _ERR_DUPLICATE = "Duplicate file already processed"
     _ERR_DEDUP_CHECK = "Cannot check duplicate file. Verify DB connection."
-    _ERR_NO_LOGS = "No parseable log rows (created_at)"
-    _ERR_ANALYSIS = "Analysis processing error"
-    _ERR_PERSIST = "Failed to save analysis results. Verify DB connection."
 
     started = time.monotonic()
     content = await file.read()
@@ -477,127 +471,30 @@ async def upload_csv(file: UploadFile = File(...)):
         tmp.write(content)
         tmp_path = Path(tmp.name)
 
-    blob_name: str | None = None
-    primary_doc = None
+    history_doc = history_svc.create_upload(
+        filename=file.filename,
+        uploaded_by="anonymous",
+        file_content_sha256=file_hash,
+    )
+    history_svc.mark_processing(history_doc, message="분석 대기")
 
-    try:
-        try:
-            result = analyze_csv_file(tmp_path)
-        except CsvValidationError as exc:
-            history_doc = history_svc.create_upload(
-                filename=file.filename,
-                uploaded_by="anonymous",
-            )
-            errors = [
-                ValidationErrorItem(row_index=exc.row_index, errors=exc.errors)
-            ]
-            history_svc.mark_validation_failed(
-                history_doc,
-                errors=errors,
-                error_message=str(exc),
-            )
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "message": str(exc),
-                    "validation_errors": [
-                        item.model_dump(mode="json") for item in errors
-                    ],
-                },
-            )
-
-        monthly = split_analysis_result_by_month(result)
-        if not monthly:
-            history_doc = history_svc.create_upload(
-                filename=file.filename,
-                uploaded_by="anonymous",
-            )
-            history_svc.mark_failed(history_doc, error_message=_ERR_NO_LOGS)
-            raise HTTPException(status_code=400, detail=_ERR_NO_LOGS)
-
-        duration_ms = int((time.monotonic() - started) * 1000)
-        upload_ids: list[str] = []
-        log_months: list[str] = []
-
-        for month, month_result in monthly.items():
-            history_doc = history_svc.create_upload(
-                filename=file.filename,
-                uploaded_by="anonymous",
-                department_scope=month,
-                file_content_sha256=file_hash,
-            )
-
-            if primary_doc is None:
-                primary_doc = history_doc
-                if is_storage_configured():
-                    try:
-                        blob_path, blob_name = upload_csv_bytes(
-                            upload_id=history_doc.upload_id,
-                            filename=file.filename,
-                            data=content,
-                        )
-                        history_svc.record_blob_path(history_doc, blob_path)
-                    except Exception as exc:
-                        logger.warning(
-                            "Blob 업로드 실패 — 로컬 분석·SQL persist만 진행 (upload_id=%s): %s",
-                            history_doc.upload_id,
-                            exc,
-                        )
-                        blob_name = None
-
-            history_svc.mark_processing(history_doc)
-            summary = month_result.get("summary", {})
-            total_rows = int(summary.get("total_logs", 0))
-
-            if not persist_analysis_result(history_doc.upload_id, month_result):
-                history_svc.mark_failed(history_doc, error_message=_ERR_PERSIST)
-                raise HTTPException(status_code=503, detail=_ERR_PERSIST)
-
-            history_svc.mark_completed(
-                history_doc,
-                summary=summary,
-                total_rows=total_rows,
-                valid_rows=total_rows,
-                invalid_rows=0,
-                duration_ms=duration_ms,
-            )
-            upload_ids.append(history_doc.upload_id)
-            log_months.append(month)
-
-        response = {k: v for k, v in result.items() if k != "masked_logs"}
-        return {
-            "upload_id": upload_ids[0],
-            "upload_ids": upload_ids,
-            "log_months": log_months,
-            "status": "completed",
-            **response,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        history_doc = history_svc.create_upload(
+    asyncio.create_task(
+        schedule_upload_job(
+            job_upload_id=history_doc.upload_id,
+            tmp_path=tmp_path,
             filename=file.filename,
-            uploaded_by="anonymous",
+            file_hash=file_hash,
+            content=content,
+            started_monotonic=started,
         )
-        history_svc.mark_failed(history_doc, error_message=_ERR_ANALYSIS)
-        raise HTTPException(status_code=500, detail=_ERR_ANALYSIS)
-    finally:
-        try:
-            tmp_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+    )
 
-        if blob_name and is_storage_configured() and primary_doc is not None:
-            try:
-                delete_blob(blob_name)
-                history_svc.record_blob_purged(primary_doc)
-            except Exception as exc:
-                logger.warning(
-                    "Blob 삭제 실패 — Portal Lifecycle(7일)이 정리합니다 (upload_id=%s): %s",
-                    primary_doc.upload_id,
-                    exc,
-                )
+    return UploadAcceptedResponse(
+        upload_id=history_doc.upload_id,
+        status="processing",
+        message="File received. Analysis started in background.",
+        filename=file.filename,
+    )
 
 
 @app.get("/api/uploads/history", response_model=UploadHistoryListResponse)

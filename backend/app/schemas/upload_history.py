@@ -54,6 +54,15 @@ class UploadHistorySummaryResponse(BaseModel):
     to_date: str
 
 
+class UploadAcceptedResponse(BaseModel):
+    """POST /api/upload — 파일 수신 후 분석은 백그라운드 처리."""
+
+    upload_id: str
+    status: str
+    message: str
+    filename: str
+
+
 # Upload History Detail Response Model
 class UploadHistoryDetailResponse(BaseModel):
     """단일 업로드 상세 (status_history 포함)"""
