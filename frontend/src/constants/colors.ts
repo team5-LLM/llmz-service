@@ -42,11 +42,11 @@ export const CHART_COLORS = [
 // 업무 유형별 색상
 export const WORK_TYPE_COLORS: Record<string, string> = {
   '보고서 작성형': COLORS.chartPink,
-  '코드 생성형': COLORS.chartCoral,
+  '코드 생성형': COLORS.gray100,
   '문서 요약형': COLORS.chartGreen,
   '고객 응대형': COLORS.chartBlue,
   '단순 검색/질문형': COLORS.chartPurple,
-  '데이터 분석형': COLORS.primaryLight,
+  '데이터 분석형': COLORS.chartCoral,
 }
 
 // 위험도별 색상
