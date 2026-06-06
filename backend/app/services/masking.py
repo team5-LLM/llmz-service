@@ -1,3 +1,11 @@
+"""
+[DEPRECATED — 런타임 미사용]
+
+AI/ML 연동(e75d870~) 이후 `ai_ml.privacy_pipeline.process_prompt_privacy`로 대체됨.
+Risk 플래그 호환은 `app.utils.sensitive_flags` 어댑터가 담당.
+삭제 전 admin_rules API·문서 참조 여부 확인 필요.
+"""
+
 import re
 from dataclasses import dataclass, asdict
 

@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 
 type DateFilterProps = {
+  value?: string // YYYY-MM
   onChange?: (year: number, month: number) => void
 }
 
-const DateFilter = ({ onChange }: DateFilterProps) => {
+const DateFilter = ({ value, onChange }: DateFilterProps) => {
   const now = new Date()
   const currentYear = now.getFullYear()
   const currentMonth = now.getMonth() + 1
@@ -13,6 +14,19 @@ const DateFilter = ({ onChange }: DateFilterProps) => {
   const [open, setOpen] = useState(false)
   const [tempYear, setTempYear] = useState(currentYear)
   const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!value) return
+    const match = value.match(/^(\d{4})-(\d{2})$/)
+    if (!match) return
+    const y = Number(match[1])
+    const m = Number(match[2])
+    if (m >= 1 && m <= 12) {
+      setYear(y)
+      setMonth(m)
+      setTempYear(y)
+    }
+  }, [value])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

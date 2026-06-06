@@ -8,23 +8,38 @@ import EmptyChart from '../components/common/EmptyChart'
 import { useSearchParams } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { getDashboardDepartments, getDashboardSummary } from '../api'
+import { useMonthParam } from '../hooks/useMonthParam'
+
+const emptySummary: Summary = {
+  total_logs: 0,
+  departments: 0,
+  total_tokens: 0,
+  total_cost: 0,
+  avg_risk_score: 0,
+}
 
 const Dashboard = () => {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const month = searchParams.get('month') ?? undefined
+  const [, setSearchParams] = useSearchParams()
+  const month = useMonthParam()
 
-  const [summary, setSummary] = useState<Summary>({
-    total_logs: 0,
-    departments: 0,
-    total_tokens: 0,
-    total_cost: 0,
-    avg_risk_score: 0,
-  })
+  const [summary, setSummary] = useState<Summary>(emptySummary)
   const [deptStats, setDeptStats] = useState<DepartmentStat[]>([])
 
   useEffect(() => {
-    getDashboardSummary(month).then((res) => setSummary(res.summary)).catch(console.error)
-    getDashboardDepartments(month).then((res) => setDeptStats(res.department_stats)).catch(console.error)
+    if (!month) return
+
+    let cancelled = false
+    setSummary(emptySummary)
+    setDeptStats([])
+
+    getDashboardSummary(month)
+      .then((res) => { if (!cancelled) setSummary(res.summary) })
+      .catch(console.error)
+    getDashboardDepartments(month)
+      .then((res) => { if (!cancelled) setDeptStats(res.department_stats) })
+      .catch(console.error)
+
+    return () => { cancelled = true }
   }, [month])
 
   const formatTokens = (value: number) => {
@@ -45,6 +60,7 @@ const Dashboard = () => {
         <h1 className="font-bold text-xxl text-black">Dashboard</h1>
         {/* 날짜 필터 */}
         <DateFilter
+          value={month}
           onChange={(year, month) => {
             setSearchParams((prev) => {
               prev.set('month', `${year}-${String(month).padStart(2, '0')}`)

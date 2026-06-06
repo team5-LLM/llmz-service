@@ -9,7 +9,7 @@ export interface DepartmentStat {
   avg_risk_score: number
   risk_level: RiskLevel
   high_critical_ratio: number
-  task_distribution: { label: string; count: number; ratio: number }[]
+  task_distribution: { label: string; label_display: string; count: number; ratio: number }[]
 }
 
 export interface Summary {

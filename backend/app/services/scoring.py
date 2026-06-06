@@ -58,8 +58,23 @@ def calculate_opportunity_score(
     return int(round(score))
 
 
+#decision_level(proceed/review/low_priority)
+DECISION_LEVEL_ALIASES: dict[str, str] = {
+    "recommended": "proceed",
+    "conditional": "review",
+    "security_review": "review",
+    "later": "review",
+    "hold": "review",
+}
+
+
+def normalize_decision_level(decision_level: str) -> str:
+    """구 decision_level → 현행 API/FE vocabulary."""
+    return DECISION_LEVEL_ALIASES.get(decision_level, decision_level)
+
+
 def adoption_decision(opportunity_score: int, risk_score_value: float) -> dict:
-    """SCR-RECO-004 Risk 기반 도입 판단 (3단계)."""
+    """SCR-RECO-004 Risk 기반 도입 판단 (3단계, cluster·task 공통)."""
     if opportunity_score >= 70 and risk_score_value <= 30:
         return {
             "decision": "도입 권장",
