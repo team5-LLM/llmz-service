@@ -16,12 +16,27 @@ SensitiveCategory = Literal[
 ]
 
 
+class SensitiveBreakdownItem(BaseModel):
+    """민감정보 유형별 탐지 비중"""
+
+    category: SensitiveCategory
+    label: str
+    count: int
+    ratio: float
+
+
 class DepartmentRiskItem(BaseModel):
-    """Critical/High 부서 요약."""
+    """부서 Risk 요약."""
 
     department: str
     avg_risk_score: float
     risk_level: Literal["Low", "Medium", "High", "Critical"]
+
+
+class DepartmentRiskWithBreakdown(DepartmentRiskItem):
+    """전 부서 Risk + 민감정보 breakdown (overview 일괄 응답)."""
+
+    sensitive_breakdown: List[SensitiveBreakdownItem]
 
 
 class RiskOverviewSummary(BaseModel):
@@ -39,6 +54,7 @@ class RiskOverviewResponse(BaseModel):
     summary: RiskOverviewSummary
     critical_departments: List[DepartmentRiskItem]
     high_departments: List[DepartmentRiskItem]
+    all_departments: List[DepartmentRiskWithBreakdown]
 
 
 class RiskLevelDefinition(BaseModel):
@@ -54,15 +70,6 @@ class RiskLevelsResponse(BaseModel):
     """GET /api/risk/levels"""
 
     levels: List[RiskLevelDefinition]
-
-
-class SensitiveBreakdownItem(BaseModel):
-    """민감정보 유형별 탐지 비중"""
-
-    category: SensitiveCategory
-    label: str
-    count: int
-    ratio: float
 
 
 class RiskDepartmentDetailResponse(BaseModel):
