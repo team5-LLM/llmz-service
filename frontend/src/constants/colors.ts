@@ -46,6 +46,7 @@ export const WORK_TYPE_COLORS: Record<string, string> = {
   '문서 요약형': COLORS.chartGreen,
   '고객 응대형': COLORS.chartBlue,
   '단순 검색/질문형': COLORS.chartPurple,
+  '데이터 분석형': COLORS.primaryLight,
 }
 
 // 위험도별 색상

@@ -4,6 +4,7 @@ import type { DepartmentStat, RiskLevel } from '../api/types'
 import KpiCard from '../components/common/KpiCard'
 import DateFilter from '../components/common/DateFilter'
 import { useSearchParams } from 'react-router-dom'
+import { useMonthParam } from '../hooks/useMonthParam'
 import RiskTable from '../components/recommendation/RiskTable'
 import EmptyChart from '../components/common/EmptyChart'
 import RiskGradeBarChart, { type RiskGradeChartItem } from '../components/recommendation/RiskGradeBarChart'
@@ -48,14 +49,22 @@ const Risk = () => {
   const [error, setError] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const month = searchParams.get('month') ?? undefined
+  const month = useMonthParam()
 
   useEffect(() => {
+    if (!month) return
+
+    let cancelled = false
     setLoading(true)
+    setStats([])
+    setError('')
+
     getDashboardDepartments(month)
-      .then(result => setStats(result.department_stats))
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false))
+      .then((result) => { if (!cancelled) setStats(result.department_stats) })
+      .catch((err) => { if (!cancelled) setError(err.message) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+
+    return () => { cancelled = true }
   }, [month])
 
   const criticalDepts = stats.filter(d => d.risk_level === 'Critical')
@@ -72,7 +81,8 @@ const Risk = () => {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="font-bold text-xxl text-black">위험도 개요</h1>
-        <DateFilter 
+        <DateFilter
+          value={month}
           onChange={(year, month) => {
             setSearchParams((prev) => {
               prev.set('month', `${year}-${String(month).padStart(2, '0')}`)

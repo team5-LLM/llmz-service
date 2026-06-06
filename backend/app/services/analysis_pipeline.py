@@ -20,6 +20,7 @@ from app.services.scoring import (
 )
 from app.services.recommender import build_reason, match_automation_candidate
 from app.utils.log_date import log_month_key
+from app.utils.sensitive_flags import sensitive_types_to_flags
 
 def calculate_risk_score_from_privacy_result(privacy_result: dict) -> float:
     """
@@ -177,6 +178,10 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
         }
 
         risk_score_value = calculate_risk_score_from_privacy_result(privacy_result)
+        risk_flags = sensitive_types_to_flags(
+            privacy_result.get("detected_sensitive_types"),
+            masking_status=privacy_result.get("masking_status"),
+        )
 
         analyzed_rows.append({
             "log_id": log_id,
@@ -220,6 +225,8 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
 
             "unmasked_rejected": privacy_result.get("unmasked_rejected", False),
             "reject_reason": privacy_result.get("reject_reason", ""),
+
+            **risk_flags,
         })
 
     adf = pd.DataFrame(analyzed_rows)
@@ -390,12 +397,12 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
     if not recommendations:
         return []
 
-    result = []
+    result: list[dict] = []
     rdf = pd.DataFrame(recommendations)
 
     for _, group_items in rdf.groupby("department"):
-        top_items = group_items.sort_values("opportunity_score", ascending=False).head(3)
-        result.extend(top_items.to_dict(orient="records"))
+        sorted_items = group_items.sort_values("opportunity_score", ascending=False)
+        result.extend(sorted_items.to_dict(orient="records"))
 
     return sorted(result, key=lambda x: x["opportunity_score"], reverse=True)
 
