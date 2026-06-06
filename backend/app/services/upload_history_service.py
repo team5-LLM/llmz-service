@@ -349,6 +349,39 @@ def mark_completed(
     _upsert(doc)
     return doc
 
+
+def complete_month_split_upload(
+    *,
+    upload_id: str,
+    parent: UploadHistoryDoc,
+    month: str,
+    summary: dict,
+    duration_ms: int,
+) -> Optional[UploadHistoryDoc]:
+    """
+    다월 CSV split 시 2번째 월 이후용 completed upload_history 행 생성.
+    prompt_logs.upload_id 가 completed 집합에 포함되도록 한다.
+    """
+    total_logs = int(summary.get("total_logs", 0) or 0)
+    doc = UploadHistoryDoc(
+        upload_id=upload_id,
+        filename=parent.filename,
+        uploaded_by=parent.uploaded_by,
+        uploaded_at=parent.uploaded_at,
+        file_content_sha256=parent.file_content_sha256,
+        department_scope=month,
+    )
+    doc.push_status(UploadStatus.PENDING, message="월별 split 저장")
+    doc.push_status(UploadStatus.PROCESSING, message=f"{month} 분석 저장")
+    return mark_completed(
+        doc,
+        summary=summary,
+        total_rows=total_logs,
+        valid_rows=total_logs,
+        invalid_rows=0,
+        duration_ms=duration_ms,
+    )
+
 # Blob 경로 기록
 def record_blob_path(doc: UploadHistoryDoc, blob_path: str) -> UploadHistoryDoc:
     doc.blob_path = blob_path

@@ -156,6 +156,17 @@ def process_upload_job(
                 history_svc.mark_failed(primary_doc, error_message=_ERR_PERSIST)
                 return
 
+            if persist_upload_id != job_upload_id:
+                if history_svc.complete_month_split_upload(
+                    upload_id=persist_upload_id,
+                    parent=primary_doc,
+                    month=month,
+                    summary=summary,
+                    duration_ms=duration_ms,
+                ) is None:
+                    history_svc.mark_failed(primary_doc, error_message=_ERR_PERSIST)
+                    return
+
             upload_ids.append(persist_upload_id)
             log_months.append(month)
             month_summaries.append(summary)
