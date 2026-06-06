@@ -3,6 +3,14 @@ from pathlib import Path
 
 MAPPING_PATH = Path(__file__).resolve().parents[1] / "data" / "automation_mapping.json"
 
+from app.utils.task_label_display import normalize_task_label, task_label_display
+
+_DIFFICULTY_KO = {
+    "Low": "하",
+    "Medium": "중",
+    "High": "상",
+}
+
 
 def load_automation_mapping() -> dict:
     with open(MAPPING_PATH, "r", encoding="utf-8") as f:
@@ -15,7 +23,7 @@ def match_automation_candidate(task_label: str) -> dict:
     업무유형을 자동화 도구 후보로 변환합니다.
     """
     mapping = load_automation_mapping()
-    return mapping.get(task_label, mapping.get("기타"))
+    return mapping.get(task_label) or mapping.get(normalize_task_label(task_label)) or mapping.get("기타")
 
 
 def build_reason(
@@ -31,12 +39,13 @@ def build_reason(
     SCR-RECO-003 추천 근거 설명(XAI).
     수치와 계산 근거를 구조화해서 반환합니다.
     """
+    display_label = normalize_task_label(task_label)
     reasons = [
         {
             "factor": "업무유형 비중",
             "value": round(task_ratio, 1),
             "unit": "%",
-            "description": f"{department}에서 '{task_label}' 업무 비중이 {task_ratio:.1f}%로 나타났습니다.",
+            "description": f"{department}에서 '{display_label}' 업무 비중이 {task_ratio:.1f}%로 나타났습니다.",
         },
         {
             "factor": "사용자 수",
@@ -80,7 +89,9 @@ def build_xai_summary(recommendation: dict) -> str:
     추천 카드의 핵심 판단 근거를 한 문장으로 요약합니다.
     """
     department = recommendation.get("department", "해당 부서")
-    task_label = recommendation.get("task_label", "해당 업무")
+    task_label = recommendation.get("task_label_display") or task_label_display(
+        recommendation.get("task_label", "해당 업무"),
+    )
     opportunity_score = recommendation.get("opportunity_score", 0)
     risk_score = recommendation.get("risk_score", 0)
     risk_level = recommendation.get("risk_level", "Unknown")
@@ -175,12 +186,6 @@ def build_decision_reason(recommendation: dict) -> str:
             f"{required_action}이 필요합니다."
         )
 
-    if decision_level == "hold":
-        return (
-            f"{decision}: 현재 위험 수준이 높아 즉시 도입보다는 "
-            f"{required_action}이 우선입니다."
-        )
-
     if decision_level == "low_priority":
         return (
             f"{decision}: 현재 데이터 기준 자동화 효과가 제한적이므로 "
@@ -195,7 +200,24 @@ def enrich_recommendation_xai(recommendation: dict) -> dict:
     추천 카드에 XAI 설명 필드를 추가합니다.
     기존 reason 필드는 유지합니다.
     """
+    from app.services.scoring import adoption_decision, normalize_decision_level
+
     enriched = dict(recommendation)
+    opportunity = enriched.get("opportunity_score")
+    risk_score = enriched.get("risk_score")
+    if opportunity is not None and risk_score is not None:
+        decision_info = adoption_decision(int(opportunity), float(risk_score))
+        enriched["decision"] = decision_info["decision"]
+        enriched["decision_level"] = decision_info["decision_level"]
+        enriched["decision_message"] = decision_info["message"]
+        if not enriched.get("required_action"):
+            enriched["required_action"] = decision_info["required_action"]
+    else:
+        enriched["decision_level"] = normalize_decision_level(
+            str(enriched.get("decision_level", ""))
+        )
+
+    enriched["task_label_display"] = task_label_display(enriched.get("task_label", ""))
     enriched["xai_summary"] = build_xai_summary(enriched)
     enriched["key_evidence"] = build_key_evidence(enriched)
     enriched["decision_reason"] = build_decision_reason(enriched)
@@ -211,6 +233,7 @@ def build_recommendation_detail(recommendation: dict) -> dict:
     return {
         "department": enriched["department"],
         "task_label": enriched["task_label"],
+        "task_label_display": enriched["task_label_display"],
         "service_name": enriched["service_name"],
         "expected_effect": enriched["expected_effect"],
         "difficulty": enriched["difficulty"],
@@ -234,7 +257,7 @@ def build_recommendation_detail(recommendation: dict) -> dict:
 
 
 def build_implementation_guide(recommendation: dict) -> list[str]:
-    task_label = recommendation["task_label"]
+    task_label = normalize_task_label(recommendation["task_label"])
 
     guides = {
         "보고서 작성형": [

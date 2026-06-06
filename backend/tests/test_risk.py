@@ -176,10 +176,12 @@ class RiskDepartmentDetailServiceTests(unittest.TestCase):
         )
 
         original_depts = dashboard_svc.get_dashboard_departments
-        original_logs = risk_svc._load_department_prompt_logs
+        original_logs = dashboard_svc.fetch_prompt_log_rows_in_range
 
         dashboard_svc.get_dashboard_departments = lambda _dr: [stat]  # type: ignore[method-assign]
-        risk_svc._load_department_prompt_logs = lambda _ids, _dept: [log]  # type: ignore[method-assign, assignment]
+        dashboard_svc.fetch_prompt_log_rows_in_range = (  # type: ignore[method-assign]
+            lambda _dr, department=None: [log] if department == "법무팀" else []
+        )
         try:
             result = risk_svc.get_risk_department_detail(
                 "법무팀",
@@ -193,7 +195,7 @@ class RiskDepartmentDetailServiceTests(unittest.TestCase):
             self.assertEqual(result["sensitive_breakdown"][0]["count"], 1)
         finally:
             dashboard_svc.get_dashboard_departments = original_depts
-            risk_svc._load_department_prompt_logs = original_logs
+            dashboard_svc.fetch_prompt_log_rows_in_range = original_logs
 
     def test_department_detail_not_found(self):
         original = dashboard_svc.get_dashboard_departments
@@ -229,9 +231,9 @@ class RiskDepartmentDetailApiTests(unittest.TestCase):
             task_distribution=[],
         )
         original_depts = dashboard_svc.get_dashboard_departments
-        original_logs = risk_svc._load_department_prompt_logs
+        original_logs = dashboard_svc.fetch_prompt_log_rows_in_range
         dashboard_svc.get_dashboard_departments = lambda _dr: [stat]  # type: ignore[method-assign]
-        risk_svc._load_department_prompt_logs = lambda _ids, _dept: []  # type: ignore[method-assign, assignment]
+        dashboard_svc.fetch_prompt_log_rows_in_range = lambda _dr, department=None: []  # type: ignore[method-assign]
         try:
             resp = self.client.get("/api/risk/departments/테스트팀")
             self.assertEqual(resp.status_code, 200)
@@ -241,7 +243,7 @@ class RiskDepartmentDetailApiTests(unittest.TestCase):
             self.assertEqual(len(body["sensitive_breakdown"]), 5)
         finally:
             dashboard_svc.get_dashboard_departments = original_depts
-            risk_svc._load_department_prompt_logs = original_logs
+            dashboard_svc.fetch_prompt_log_rows_in_range = original_logs
 
 
 if __name__ == "__main__":

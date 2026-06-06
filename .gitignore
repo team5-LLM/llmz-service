@@ -14,6 +14,7 @@ secrets.json
 local_settings.py
 !*.example
 analysis_result.json
+backend/ai_ml/
 
 # Node.js (Frontend / React)
 frontend/node_modules/

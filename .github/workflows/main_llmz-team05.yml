@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - 'backend/**'
+      - 'ai_ml/**'
       - '.github/workflows/main_llmz-team05.yml'
   workflow_dispatch:
 
@@ -30,11 +31,19 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Bundle ai_ml package into backend artifact
+        working-directory: .
+        run: |
+          rm -rf backend/ai_ml
+          mkdir -p backend/ai_ml
+          cp -r ai_ml/src/* backend/ai_ml/
+
       - name: Install dependencies (CI 검증 — venv는 배포 artifact에 포함하지 않음)
         run: |
           python -m venv antenv
           source antenv/bin/activate
           pip install -r requirements.txt
+          python -c "from app.main import app"
 
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4

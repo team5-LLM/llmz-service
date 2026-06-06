@@ -1,3 +1,4 @@
+from collections import defaultdict
 from pathlib import Path
 import math
 from typing import Any
@@ -12,13 +13,14 @@ from ai_ml.automation_matcher import match_automation_candidate_llm
 
 from app.services.csv_loader import load_and_validate_csv
 from app.services.scoring import (
-    calculate_risk_score,
     risk_level,
     normalize,
     calculate_opportunity_score,
     adoption_decision,
 )
-from app.services.recommender import build_reason
+from app.services.recommender import build_reason, match_automation_candidate
+from app.utils.log_date import log_month_key
+from app.utils.sensitive_flags import sensitive_types_to_flags
 
 def calculate_risk_score_from_privacy_result(privacy_result: dict) -> float:
     """
@@ -176,6 +178,10 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
         }
 
         risk_score_value = calculate_risk_score_from_privacy_result(privacy_result)
+        risk_flags = sensitive_types_to_flags(
+            privacy_result.get("detected_sensitive_types"),
+            masking_status=privacy_result.get("masking_status"),
+        )
 
         analyzed_rows.append({
             "log_id": log_id,
@@ -219,6 +225,8 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
 
             "unmasked_rejected": privacy_result.get("unmasked_rejected", False),
             "reject_reason": privacy_result.get("reject_reason", ""),
+
+            **risk_flags,
         })
 
     adf = pd.DataFrame(analyzed_rows)
@@ -389,21 +397,55 @@ def build_recommendations(adf: pd.DataFrame) -> list[dict]:
     if not recommendations:
         return []
 
-    result = []
+    result: list[dict] = []
     rdf = pd.DataFrame(recommendations)
 
     for _, group_items in rdf.groupby("department"):
-        top_items = group_items.sort_values("opportunity_score", ascending=False).head(3)
-        result.extend(top_items.to_dict(orient="records"))
+        sorted_items = group_items.sort_values("opportunity_score", ascending=False)
+        result.extend(sorted_items.to_dict(orient="records"))
 
     return sorted(result, key=lambda x: x["opportunity_score"], reverse=True)
 
-def split_analysis_result_by_month(result: dict) -> dict:
+
+def build_analysis_result_from_logs(log_records: list[dict]) -> dict:
+    """prompt_logs / masked_logs 레코드 목록 → 분석 결과 dict."""
+    adf = pd.DataFrame(log_records)
+    if adf.empty:
+        return {
+            "summary": build_summary_from_dataframe(adf),
+            "department_stats": [],
+            "recommendations": [],
+            "cluster_profiles": [],
+            "cluster_recommendations": [],
+            "sample_masked_logs": [],
+            "masked_logs": [],
+        }
+    return {
+        "summary": build_summary_from_dataframe(adf),
+        "department_stats": build_department_stats(adf),
+        "recommendations": build_recommendations(adf),
+        "cluster_profiles": [],
+        "cluster_recommendations": [],
+        "sample_masked_logs": adf.head(20).to_dict(orient="records"),
+        "masked_logs": adf.to_dict(orient="records"),
+    }
+
+
+def split_analysis_result_by_month(result: dict) -> dict[str, dict]:
     """
-    현재는 월별 분할 없이 전체 분석 결과를 그대로 반환.
-    추후 created_at 기준 월별 분할 저장이 필요하면 여기서 구현.
+    분석 결과를 prompt_logs.created_at 월(YYYY-MM)별로 분할.
+    업로드 시 월별 upload_id + persist 용.
     """
-    return result
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for log in result.get("masked_logs", []):
+        month = log_month_key(str(log.get("created_at", "")))
+        if month:
+            grouped[month].append(log)
+
+    return {
+        month: build_analysis_result_from_logs(logs)
+        for month, logs in sorted(grouped.items())
+    }
 
 def make_json_safe(value: Any) -> Any:
     """

@@ -7,29 +7,48 @@ import RecommendationDetailList from '../components/recommendation/Recommendatio
 import InfoBox from '../components/recommendation/InfoBox'
 import { getDashboardDepartments, getRecommendationsByDepartment } from '../api'
 import EmptyChart from '../components/common/EmptyChart'
+import { useMonthParam } from '../hooks/useMonthParam'
 
 const Recommendation = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const dept  = searchParams.get('dept')
-  const month = searchParams.get('month') ?? undefined
+  const month = useMonthParam()
 
   const [allDepts, setAllDepts] = useState<DepartmentStat[]>([])
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
 
   // 드롭다운 목록
   useEffect(() => {
+    if (!month) return
+
+    let cancelled = false
+    setAllDepts([])
+
     getDashboardDepartments(month)
-      .then((res) => setAllDepts(res.department_stats))
+      .then((res) => { if (!cancelled) setAllDepts(res.department_stats) })
       .catch(console.error)
+
+    return () => { cancelled = true }
   }, [month])
 
   // 추천 데이터: dept 또는 allDepts가 바뀔 때
   useEffect(() => {
+    if (!month) return
+
     const target = dept ?? allDepts[0]?.department
-    if (!target) return
+    if (!target) {
+      setRecommendations([])
+      return
+    }
+
+    let cancelled = false
+    setRecommendations([])
+
     getRecommendationsByDepartment(target, month)
-      .then((res) => setRecommendations(res.recommendations))
+      .then((res) => { if (!cancelled) setRecommendations(res.recommendations) })
       .catch(console.error)
+
+    return () => { cancelled = true }
   }, [dept, month, allDepts])
 
   return (
@@ -40,7 +59,8 @@ const Recommendation = () => {
           <h1 className="font-bold text-xxl text-black">자동화 추천</h1>
         </div>
         {/* 날짜 필터 */}
-        <DateFilter 
+        <DateFilter
+          value={month}
           onChange={(year, month) => {
             setSearchParams((prev) => {
               prev.set('month', `${year}-${String(month).padStart(2, '0')}`)

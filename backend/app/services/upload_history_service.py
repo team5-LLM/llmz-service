@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import List, Optional
+from datetime import datetime
+from typing import List, Literal, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -33,6 +35,9 @@ from app.models.upload_history_table import UploadHistoryRow
 from app.utils.date_range import DateRange
 
 logger = logging.getLogger(__name__)
+
+# 월별 split 자식 이력(legacy) — 같은 job 으로 묶는 시간 창
+_SPLIT_DEDUP_WINDOW_SEC = 600
 
 # summary API by_status 집계 대상
 SUMMARY_STATUSES = (
@@ -101,6 +106,55 @@ def _status_value(status) -> str:
     return str(status)
 
 # list / count / summary — 동일 WHERE (페이징 total 일치 보장)
+def _parse_uploaded_at(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _dedupe_monthly_split_rows(docs: List[UploadHistoryDoc]) -> List[UploadHistoryDoc]:
+    """
+    월별 split 시 생성된 자식 upload_history 행을 목록에서 숨김.
+    동일 file_hash + filename 이 짧은 시간 안에 여러 건이면 가장 이른 1건만 유지.
+    """
+    if len(docs) <= 1:
+        return docs
+
+    groups: dict[tuple[str, str], list[UploadHistoryDoc]] = defaultdict(list)
+    for doc in docs:
+        if (
+            doc.file_content_sha256
+            and doc.status == UploadStatus.COMPLETED.value
+        ):
+            groups[(doc.file_content_sha256, doc.filename)].append(doc)
+
+    suppress_ids: set[str] = set()
+    for group in groups.values():
+        if len(group) <= 1:
+            continue
+
+        ordered = sorted(group, key=lambda item: item.uploaded_at)
+        cluster = [ordered[0]]
+        anchor = _parse_uploaded_at(ordered[0].uploaded_at)
+
+        for doc in ordered[1:]:
+            ts = _parse_uploaded_at(doc.uploaded_at)
+            if (ts - anchor).total_seconds() <= _SPLIT_DEDUP_WINDOW_SEC:
+                cluster.append(doc)
+            else:
+                if len(cluster) > 1:
+                    for dup in cluster[1:]:
+                        suppress_ids.add(dup.upload_id)
+                cluster = [doc]
+                anchor = ts
+
+        if len(cluster) > 1:
+            for dup in cluster[1:]:
+                suppress_ids.add(dup.upload_id)
+
+    if not suppress_ids:
+        return docs
+    return [doc for doc in docs if doc.upload_id not in suppress_ids]
+
+
 def _apply_filters(query, filters: UploadHistoryFilters):
     """공통 WHERE 조건 — list/count/summary 집계에 동일 적용."""
     if filters.filename_q:
@@ -170,21 +224,39 @@ def _upsert(doc: UploadHistoryDoc) -> Optional[UploadHistoryDoc]:
     finally:
         session.close()
 
+_IN_PROGRESS_STATUSES = frozenset({
+    UploadStatus.PENDING.value,
+    UploadStatus.PROCESSING.value,
+    UploadStatus.MASKING.value,
+    UploadStatus.CLASSIFYING.value,
+    UploadStatus.SCORING.value,
+})
+
+_BLOCKING_STATUSES = _IN_PROGRESS_STATUSES | {UploadStatus.COMPLETED.value}
+
+
 @dataclass(frozen=True)
 class ExistingFileUpload:
-    """동일 파일(SHA-256)로 이미 완료된 업로드 묶음."""
+    """동일 파일(SHA-256)로 업로드가 차단되는 기존 이력."""
 
     file_content_sha256: str
     filename: str
     uploaded_at: str
     upload_ids: List[str]
     log_months: List[str]
+    blocking_reason: Literal["in_progress", "completed"]
 
 
-def find_existing_completed_by_file_hash(
+def find_blocking_upload_by_file_hash(
     file_content_sha256: str,
 ) -> Optional[ExistingFileUpload]:
-    """completed 상태인 동일 해시 업로드가 있으면 요약 반환."""
+    """
+    동일 해시로 재업로드를 막아야 하는 이력이 있으면 요약 반환.
+
+    - in_progress: pending / processing 등 분석 진행 중
+    - completed: 이미 처리 완료
+    - failed 는 재시도 허용 → 조회 대상 아님
+    """
     session = safe_session()
     if session is None:
         return None
@@ -194,27 +266,42 @@ def find_existing_completed_by_file_hash(
             select(UploadHistoryRow)
             .where(
                 UploadHistoryRow.file_content_sha256 == file_content_sha256,
-                UploadHistoryRow.status == UploadStatus.COMPLETED.value,
+                UploadHistoryRow.status.in_(_BLOCKING_STATUSES),
             )
-            .order_by(UploadHistoryRow.department_scope.asc())
+            .order_by(UploadHistoryRow.uploaded_at.asc())
         )
         rows = session.scalars(query).all()
         if not rows:
             return None
 
-        first = rows[0]
+        in_progress = [r for r in rows if r.status in _IN_PROGRESS_STATUSES]
+        completed = [r for r in rows if r.status == UploadStatus.COMPLETED.value]
+        target_rows = in_progress if in_progress else completed
+        first = target_rows[0]
+
         return ExistingFileUpload(
             file_content_sha256=file_content_sha256,
             filename=first.filename,
-            uploaded_at=min(r.uploaded_at for r in rows),
-            upload_ids=[r.upload_id for r in rows],
-            log_months=[r.department_scope for r in rows],
+            uploaded_at=min(r.uploaded_at for r in target_rows),
+            upload_ids=[r.upload_id for r in target_rows],
+            log_months=[r.department_scope for r in target_rows],
+            blocking_reason="in_progress" if in_progress else "completed",
         )
     except SQLAlchemyError as exc:
         logger.warning("file hash 중복 조회 실패 — skip: %s", exc)
         return None
     finally:
         session.close()
+
+
+def find_existing_completed_by_file_hash(
+    file_content_sha256: str,
+) -> Optional[ExistingFileUpload]:
+    """하위 호환 — completed 차단만 조회."""
+    existing = find_blocking_upload_by_file_hash(file_content_sha256)
+    if existing is None or existing.blocking_reason != "completed":
+        return None
+    return existing
 
 
 # 업로드 시작 시점 호출
@@ -261,6 +348,39 @@ def mark_completed(
     doc.push_status(UploadStatus.COMPLETED, message="분석 완료")
     _upsert(doc)
     return doc
+
+
+def complete_month_split_upload(
+    *,
+    upload_id: str,
+    parent: UploadHistoryDoc,
+    month: str,
+    summary: dict,
+    duration_ms: int,
+) -> Optional[UploadHistoryDoc]:
+    """
+    다월 CSV split 시 2번째 월 이후용 completed upload_history 행 생성.
+    prompt_logs.upload_id 가 completed 집합에 포함되도록 한다.
+    """
+    total_logs = int(summary.get("total_logs", 0) or 0)
+    doc = UploadHistoryDoc(
+        upload_id=upload_id,
+        filename=parent.filename,
+        uploaded_by=parent.uploaded_by,
+        uploaded_at=parent.uploaded_at,
+        file_content_sha256=parent.file_content_sha256,
+        department_scope=month,
+    )
+    doc.push_status(UploadStatus.PENDING, message="월별 split 저장")
+    doc.push_status(UploadStatus.PROCESSING, message=f"{month} 분석 저장")
+    return mark_completed(
+        doc,
+        summary=summary,
+        total_rows=total_logs,
+        valid_rows=total_logs,
+        invalid_rows=0,
+        duration_ms=duration_ms,
+    )
 
 # Blob 경로 기록
 def record_blob_path(doc: UploadHistoryDoc, blob_path: str) -> UploadHistoryDoc:
@@ -328,7 +448,8 @@ def list_uploads(
         query = select(UploadHistoryRow).order_by(UploadHistoryRow.uploaded_at.desc())
         query = _apply_filters(query, filters)
         rows = session.scalars(query.offset(int(skip)).limit(int(limit))).all()
-        return [_row_to_doc(row) for row in rows]
+        docs = [_row_to_doc(row) for row in rows]
+        return _dedupe_monthly_split_rows(docs)
     except SQLAlchemyError as exc:
         logger.error("list_uploads 실패: %s", exc)
         return []

@@ -1,15 +1,19 @@
 """SCR-RECO — recommendations 재집계 (prompt_logs.created_at 기준)."""
 
 from __future__ import annotations
+
 import logging
 from typing import Any, List, Optional
+
 import pandas as pd
+
 from app.services import dashboard_service as dashboard_svc
 from app.services.analysis_pipeline import build_recommendations
-from app.utils.date_range import DateRange
 from app.services.recommender import enrich_recommendation_xai
+from app.utils.date_range import DateRange
 
 logger = logging.getLogger(__name__)
+
 
 def _merge_recommendations(items: List[dict[str, Any]]) -> List[dict[str, Any]]:
     """동일 (department, task_label) — opportunity_score 최대 row 유지."""
@@ -27,6 +31,7 @@ def _merge_recommendations(items: List[dict[str, Any]]) -> List[dict[str, Any]]:
     result.sort(key=lambda item: item["opportunity_score"], reverse=True)
     return result
 
+
 def get_recommendations(
     date_range: DateRange,
     *,
@@ -43,19 +48,19 @@ def get_recommendations(
 
     if not rows:
         return []
-    
+
     log_dicts = [dashboard_svc.prompt_log_row_to_dict(row) for row in rows]
     recs = build_recommendations(pd.DataFrame(log_dicts))
     merged = _merge_recommendations(recs)
 
     return [enrich_recommendation_xai(item) for item in merged]
 
+
 def get_recommendation_item(
     department: str,
     task_label: str,
     date_range: DateRange,
 ) -> Optional[dict[str, Any]]:
-
     """단일 (department, task_label) 추천 — 없으면 None (404)."""
     items = get_recommendations(date_range, department=department)
     for item in items:

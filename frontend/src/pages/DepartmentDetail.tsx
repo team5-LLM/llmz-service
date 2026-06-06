@@ -8,6 +8,7 @@ import RecommendationList from '../components/department/RecommendationList'
 import { getDashboardDepartments, getDepartmentDetail, getRecommendationsByDepartment } from '../api'
 import type { DepartmentStat, Recommendation } from '../api/types'
 import EmptyChart from '../components/common/EmptyChart'
+import { useMonthParam } from '../hooks/useMonthParam'
 
 const formatTokens = (value: number) => {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
@@ -15,46 +16,79 @@ const formatTokens = (value: number) => {
   return value.toString()
 }
 
+const emptyOverview = {
+  total_tokens: 0,
+  total_cost: 0,
+  user_count: 0,
+  task_distribution: [] as { label: string; label_display?: string; count: number; ratio: number }[],
+}
+
 const DepartmentDetail = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const dept  = searchParams.get('dept')
-  const month = searchParams.get('month') ?? undefined
+  const month = useMonthParam()
 
   const [allDepts, setAllDepts] = useState<DepartmentStat[]>([])
-  const [overview, setOverview] = useState({ total_tokens: 0, total_cost: 0, user_count: 0, task_distribution: [] as { label: string; count: number; ratio: number }[] })
+  const [overview, setOverview] = useState(emptyOverview)
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
 
   // 드롭다운 목록: month가 바뀔 때
   useEffect(() => {
+    if (!month) return
+
+    let cancelled = false
+    setAllDepts([])
+
     getDashboardDepartments(month)
-      .then((res) => setAllDepts(res.department_stats))
-      .catch(console.error)
+      .then((res) => { if (!cancelled) setAllDepts(res.department_stats) })
+      .catch(() => { if (!cancelled) setAllDepts([]) })
+
+    return () => { cancelled = true }
   }, [month])
 
   // 부서 상세 + 추천: dept 또는 month가 바뀔 때
   useEffect(() => {
+    if (!month) return
+
     const target = dept ?? allDepts[0]?.department
-    if (!target) return
+    if (!target) {
+      setOverview(emptyOverview)
+      setRecommendations([])
+      return
+    }
+
+    setOverview(emptyOverview)
+    setRecommendations([])
+
+    let cancelled = false
 
     getDepartmentDetail(target, month)
       .then((res) => {
-        // 백엔드 응답: { overview: { total_tokens, total_cost, user_count }, tasks_by_priority }
+        if (cancelled) return
         setOverview({
           total_tokens: res.overview.total_tokens,
           total_cost: res.overview.total_cost,
           user_count: res.overview.user_count,
-          task_distribution: (res.tasks_by_priority ?? []).map((t: { task_label: string; count: number; ratio: number }) => ({
+          task_distribution: (res.tasks_by_priority ?? []).map((t: {
+            task_label: string
+            task_label_display: string
+            count: number
+            ratio: number
+          }) => ({
             label: t.task_label,
+            label_display: t.task_label_display,
             count: t.count,
-            ratio: t.ratio / 100,  // tasks_by_priority ratio는 0~100 단위 → 0~1로 변환
+            ratio: t.ratio / 100,
           })),
         })
       })
-      .catch(console.error)
+      .catch(() => { if (!cancelled) setOverview(emptyOverview) })
 
     getRecommendationsByDepartment(target, month)
-      .then((res) => setRecommendations(res.recommendations))
-      .catch(console.error)
+      .then((res) => { if (!cancelled) setRecommendations(res.recommendations) })
+      .catch(() => { if (!cancelled) setRecommendations([]) })
+
+    return () => { cancelled = true }
   }, [dept, month, allDepts])
 
   const kpiData = [
@@ -69,6 +103,7 @@ const DepartmentDetail = () => {
         <DepartmentDropdown data={allDepts} />
         {/* 날짜 필터 */}
         <DateFilter
+          value={month}
           onChange={(year, month) => {
             setSearchParams((prev) => {
               prev.set('month', `${year}-${String(month).padStart(2, '0')}`)

@@ -4,6 +4,7 @@ SCR-RISK-001 · SCR-RISK-002 · SCR-RISK-003 — 위험도 API 서비스.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Callable, List, Optional, Tuple
 
 from app.models.analysis_result_tables import PromptLogRow
@@ -71,10 +72,39 @@ def get_risk_levels() -> dict:
     return {"levels": [item.model_dump() for item in RISK_LEVEL_DEFINITIONS]}
 
 
+def _build_all_department_risk_details(
+    stats: List[DepartmentStatItem],
+    date_range: DateRange,
+) -> List[dict]:
+    """prompt_logs 1회 조회 후 부서별 sensitive_breakdown 일괄 생성."""
+    if not stats:
+        return []
+
+    logs = dashboard_svc.fetch_prompt_log_rows_in_range(date_range)
+    logs_by_dept: dict[str, List[PromptLogRow]] = defaultdict(list)
+    for row in logs:
+        logs_by_dept[row.department].append(row)
+
+    rows: List[dict] = []
+    for stat in stats:
+        breakdown = build_sensitive_breakdown(logs_by_dept.get(stat.department, []))
+        rows.append(
+            {
+                "department": stat.department,
+                "avg_risk_score": stat.avg_risk_score,
+                "risk_level": stat.risk_level,
+                "sensitive_breakdown": [item.model_dump() for item in breakdown],
+            }
+        )
+
+    rows.sort(key=lambda item: (-item["avg_risk_score"], item["department"]))
+    return rows
+
+
 def get_risk_overview(date_range: DateRange) -> dict:
     """
-    기간 내 department_stats 기준 등급별 부서 수 · Critical/High 목록.
-    get_dashboard_departments() 재사용.
+    기간 내 department_stats 기준 등급별 부서 수 · Critical/High · 전 부서 breakdown.
+    get_dashboard_departments() + prompt_logs 1회 조회.
     """
     stats = dashboard_svc.get_dashboard_departments(date_range)
 
@@ -112,6 +142,7 @@ def get_risk_overview(date_range: DateRange) -> dict:
         "summary": summary,
         "critical_departments": [item.model_dump() for item in critical],
         "high_departments": [item.model_dump() for item in high],
+        "all_departments": _build_all_department_risk_details(stats, date_range),
     }
 
 
