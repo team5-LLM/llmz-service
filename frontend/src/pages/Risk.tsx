@@ -40,7 +40,7 @@ const Risk = () => {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [, setSearchParams] = useSearchParams()
 
   const month = useMonthParam()
 

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import DepartmentDropdown from '../components/common/DepartmentDropdown'
 import DateFilter from '../components/common/DateFilter'
-import type { DepartmentStat, Recommendation } from '../api/types'
+import type { DepartmentStat, Recommendation as RecommendationItem } from '../api/types'
 import RecommendationDetailList from '../components/recommendation/RecommendationDetailList'
 import InfoBox from '../components/recommendation/InfoBox'
 import { getDashboardDepartments, getRecommendationsByDepartment } from '../api'
@@ -15,7 +15,7 @@ const Recommendation = () => {
   const month = useMonthParam()
 
   const [allDepts, setAllDepts] = useState<DepartmentStat[]>([])
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([])
+  const [recommendations, setRecommendations] = useState<RecommendationItem[]>([])
 
   // 드롭다운 목록
   useEffect(() => {

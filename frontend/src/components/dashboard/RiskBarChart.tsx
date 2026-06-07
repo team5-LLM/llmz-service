@@ -36,7 +36,7 @@ const RiskBarChart = ({ data }: Props) => {
           tick={{ fontSize: 14, fill: COLORS.black }}
         />
         <Tooltip
-          formatter={(value: number) => [value.toFixed(1), '평균 위험도']}
+          formatter={(value) => [Number(value).toFixed(1), '평균 위험도']}
           cursor={{ fill: COLORS.white }}
         />
         <Bar dataKey="value" isAnimationActive radius={6}>
