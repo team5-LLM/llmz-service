@@ -74,3 +74,51 @@ export interface UploadHistoryListResponse {
   limit: number
   skip: number
 }
+
+// -- Risk 화면 --
+
+export type SensitiveCategory = 'personal_info' | 'customer_info' | 'confidential' | 'source_code' | 'finance_legal'
+
+export interface SensitiveBreakdownItem {
+  category: SensitiveCategory
+  label: string
+  count: number
+  ratio: number
+}
+
+export interface DepartmentRiskItem {
+  department: string
+  avg_risk_score: number
+  risk_level: RiskLevel
+}
+
+export interface DepartmentRiskWithBreakdown extends DepartmentRiskItem {
+  sensitive_breakdown: SensitiveBreakdownItem[]
+}
+
+export interface RiskOverviewSummary {
+  critical_count: number
+  high_count: number
+  medium_count: number
+  low_count: number
+  total_departments: number
+}
+
+export interface RiskOverviewResponse {
+  period: { from_date: string; to_date: string }
+  summary: RiskOverviewSummary
+  critical_departments: DepartmentRiskItem[]
+  high_departments: DepartmentRiskItem[]
+  all_departments: DepartmentRiskWithBreakdown[]
+}
+
+export interface RiskLevelDefinition {
+  level: RiskLevel
+  score_range: string
+  meaning: string
+  recommended_action: string
+}
+
+export interface RiskLevelsResponse {
+  levels: RiskLevelDefinition[]
+}
