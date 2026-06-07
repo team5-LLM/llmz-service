@@ -33,7 +33,7 @@ const TokenDonutChart = ({ data }: Props) => {
           </Pie>
           {/* 마우스 hover 시 사용량 상세 표시 */}
           <Tooltip
-            formatter={(value: number) => [`${value.toLocaleString()} 토큰`, '']}
+            formatter={(value) => [`${Number(value).toLocaleString()} 토큰`, '']}
           />
         </PieChart>
       </ResponsiveContainer>

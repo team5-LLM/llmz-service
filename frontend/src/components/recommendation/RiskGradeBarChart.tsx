@@ -34,7 +34,7 @@ const RiskGradeBarChart = ({ data: chartData }: Props) => {
           domain={[0, 100]}
         />
         <Tooltip
-          formatter={(value: number) => [`${value}%`, '비율']}
+          formatter={(value) => [`${value}%`, '비율']}
           cursor={{ fill: 'transparent' }}
         />
         <Bar dataKey="ratio" isAnimationActive radius={6}>
