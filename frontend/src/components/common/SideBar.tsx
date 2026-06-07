@@ -27,7 +27,10 @@ const SideBar = () => {
     <aside className="w-[240px] h-screen bg-white flex flex-col shrink-0 shadow-md">
       {/* 로고 */}
       <div className="h-[74px] flex justify-center items-center">
-        <span className="font-bold text-md text-black">로고</span>
+        <span style={{ fontFamily: '"Zalando Sans Expanded", sans-serif', fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.06em' }}>
+          <span className="text-primary">LLM</span>
+          <span className="text-black">Z</span>
+        </span>
       </div>
 
       {/* 네비게이션 */}
