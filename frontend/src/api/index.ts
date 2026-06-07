@@ -1,4 +1,4 @@
-import type { AnalysisResult, UploadHistoryListResponse, Summary, DepartmentStat, Recommendation } from './types'
+import type { AnalysisResult, UploadHistoryListResponse, Summary, DepartmentStat, Recommendation, RiskOverviewResponse, RiskLevelsResponse } from './types'
 
 const DEFAULT_API_BASE_URL = 'https://llmz-team05.azurewebsites.net'
 
@@ -76,3 +76,20 @@ export async function getRecommendationsByDepartment(department: string, month?:
 
 // -- Recommendation 화면 --
 // 위의 getDashboardDepartments, getRecommendationByDepartment 사용
+
+// -- Risk 화면 --
+
+// GET /api/risk/overview?month=YYYY-MM
+export async function getRiskOverview(month?: string): Promise<RiskOverviewResponse> {
+  const params = month ? `?month=${month}` : ''
+  const res = await fetch(`${BASE_URL}/api/risk/overview${params}`)
+  if (!res.ok) throw new Error('위험도 데이터를 불러오지 못했습니다.')
+  return res.json()
+}
+
+// GET /api/risk/levels
+export async function getRiskLevels(): Promise<RiskLevelsResponse> {
+  const res = await fetch(`${BASE_URL}/api/risk/levels`)
+  if (!res.ok) throw new Error('위험도 등급 데이터를 불러오지 못했습니다.')
+  return res.json()
+}
