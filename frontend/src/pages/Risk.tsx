@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { getDashboardDepartments } from '../api'
-import type { DepartmentStat, RiskLevel } from '../api/types'
+import { getRiskOverview } from '../api'
+import type { DepartmentRiskWithBreakdown, RiskLevel } from '../api/types'
 import KpiCard from '../components/common/KpiCard'
 import DateFilter from '../components/common/DateFilter'
 import { useSearchParams } from 'react-router-dom'
 import { useMonthParam } from '../hooks/useMonthParam'
-import RiskTable from '../components/recommendation/RiskTable'
 import EmptyChart from '../components/common/EmptyChart'
+import RiskTable from '../components/recommendation/RiskTable'
 import RiskGradeBarChart, { type RiskGradeChartItem } from '../components/recommendation/RiskGradeBarChart'
 
 const levelStyle: Record<RiskLevel, { bg: string; color: string }> = {
@@ -32,19 +32,12 @@ const BAR_COLORS = [
   'var(--color-chart-purple)',
 ]
 
-function deriveBars(stat: DepartmentStat): { ratio: number; color: string }[] {
-  const dist = stat.task_distribution
-  const ratios = dist.slice(0, 5).map(t => t.ratio)
-  while (ratios.length < 5) ratios.push(0)
-  const sum = ratios.reduce((a, b) => a + b, 0)
-  const normalized = sum > 0 ? ratios.map(r => (r / sum) * 100) : [20, 20, 20, 20, 20]
-  return normalized
-    .map((ratio, i) => ({ ratio, color: BAR_COLORS[i] }))
-    .sort((a, b) => b.ratio - a.ratio)
-}
 
 const Risk = () => {
-  const [stats, setStats] = useState<DepartmentStat[]>([])
+  const [allDepts, setAllDepts] = useState<DepartmentRiskWithBreakdown[]>([])
+  const [criticalCount, setCriticalCount] = useState(0)
+  const [highCount, setHighCount] = useState(0)
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
@@ -56,25 +49,28 @@ const Risk = () => {
 
     let cancelled = false
     setLoading(true)
-    setStats([])
+    setAllDepts([])
     setError('')
 
-    getDashboardDepartments(month)
-      .then((result) => { if (!cancelled) setStats(result.department_stats) })
+    getRiskOverview(month)
+      .then((overview) => {
+        if (!cancelled) {
+          setAllDepts(overview.all_departments)
+          setCriticalCount(overview.summary.critical_count)
+          setHighCount(overview.summary.high_count + overview.summary.critical_count)
+        }
+      })
       .catch((err) => { if (!cancelled) setError(err.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
 
     return () => { cancelled = true }
   }, [month])
 
-  const criticalDepts = stats.filter(d => d.risk_level === 'Critical')
-  const highDepts = stats.filter(d => d.risk_level === 'High' || d.risk_level === 'Critical')
-
   const GRADES = ['Low', 'Medium', 'High', 'Critical'] as const
-  const total = stats.length || 1
+  const total = allDepts.length || 1
   const riskChartData: RiskGradeChartItem[] = GRADES.map((grade) => ({
     grade,
-    ratio: Math.round((stats.filter(d => d.risk_level === grade).length / total) * 100),
+    ratio: Math.round((allDepts.filter(d => d.risk_level === grade).length / total) * 100),
   }))
 
   return (
@@ -93,8 +89,8 @@ const Risk = () => {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <KpiCard label="Critical 부서" value={`${criticalDepts.length}개`} />
-        <KpiCard label="High 이상 부서" value={`${highDepts.length}개`} />
+        <KpiCard label="Critical 부서" value={`${criticalCount}개`} />
+        <KpiCard label="High 이상 부서" value={`${highCount}개`} />
       </div>
 
       <div className="bg-white rounded-lg p-6">
@@ -118,16 +114,19 @@ const Risk = () => {
         )}
 
         <div className="flex flex-col gap-5">
-          {stats.map(stat => {
-            const ls = levelStyle[stat.risk_level]
-            const bars = deriveBars(stat)
+          {allDepts.map(dept => {
+            const ls = levelStyle[dept.risk_level]
+            const bars = dept.sensitive_breakdown
+              .slice(0, 5)
+              .map((item, i) => ({ ratio: item.ratio, color: BAR_COLORS[i] }))
+              .sort((a, b) => b.ratio - a.ratio)
             return (
-              <div key={stat.department} className="flex items-center gap-4">
-                <span className="text-sm text-black w-28 shrink-0">{stat.department}</span>
+              <div key={dept.department} className="flex items-center gap-4">
+                <span className="text-sm text-black w-28 shrink-0">{dept.department}</span>
                 <div className="flex-1 h-8 rounded-md overflow-hidden bg-bg">
                   <div
                     className="flex h-full overflow-hidden"
-                    style={{ width: `${stat.avg_risk_score}%`, borderRadius: '0 6px 6px 0' }}
+                    style={{ width: `${dept.avg_risk_score}%`, borderRadius: '0 6px 6px 0' }}
                   >
                     {bars.map(({ ratio, color }, i) => (
                       <div key={i} style={{ width: `${ratio}%`, backgroundColor: color }} />
@@ -135,13 +134,13 @@ const Risk = () => {
                   </div>
                 </div>
                 <span className="text-sm font-bold text-black w-8 text-right shrink-0">
-                  {stat.avg_risk_score}
+                  {dept.avg_risk_score}
                 </span>
                 <span
                   className="px-3 py-0.5 rounded-full text-xs font-medium w-16 text-center shrink-0"
                   style={{ backgroundColor: ls.bg, color: ls.color }}
                 >
-                  {stat.risk_level}
+                  {dept.risk_level}
                 </span>
               </div>
             )
@@ -160,7 +159,7 @@ const Risk = () => {
           <div className="flex justify-between items-center mb-6">
             <h2 className="font-bold text-lg text-black">위험도 등급 분포</h2>
           </div>
-          {stats.length === 0
+          {allDepts.length === 0
             ? <EmptyChart />
             : <RiskGradeBarChart data={riskChartData} />
           }
