@@ -64,16 +64,13 @@ def calculate_opportunity_score(profile: dict) -> int:
     user_count = int(profile.get("user_count", 0) or 0)
     total_cost = float(profile.get("total_cost", 0.0) or 0.0)
     repeat_ratio = float(profile.get("repeat_ratio", 0.0) or 0.0)
-    avg_risk = float(profile.get("avg_risk_score", 0.0) or 0.0)
-    macro_category = str(profile.get("macro_category", "SEARCH_QA"))
 
-    frequency_score = min(log_count / 50, 1.0) * 30
-    repeat_score = min(repeat_ratio, 1.0) * 25
+    frequency_score = min(log_count / 50, 1.0) * 35
+    repeat_score = min(repeat_ratio, 1.0) * 30
     cost_score = min(total_cost / 1500, 1.0) * 20
     multi_user_score = min(user_count / 8, 1.0) * 15
 
-    difficulty_reverse = {"Low": 10, "Medium": 6, "High": 3}.get(_difficulty(macro_category, avg_risk), 5)
-    score = frequency_score + repeat_score + cost_score + multi_user_score + difficulty_reverse
+    score = frequency_score + repeat_score + cost_score + multi_user_score
     return int(round(min(score, 100)))
 
 
