@@ -649,11 +649,7 @@ def get_recommendations(
 ):
     """전체 자동화 추천 카드 — prompt_logs.created_at 기준 task 재집계."""
     date_range = _resolve_history_date_range(from_date, to_date, month)
-    items = recommendation_svc.get_recommendations(date_range)
-    return {
-        "count": len(items),
-        "recommendations": items,
-    }
+    return recommendation_svc.get_recommendation_payload(date_range)
 
 
 @app.get("/api/recommendations/by-department")
@@ -665,12 +661,10 @@ def get_recommendations_by_department_query(
 ):
     """부서명에 '/'가 있을 때 path 라우팅 대신 사용."""
     date_range = _resolve_history_date_range(from_date, to_date, month)
-    items = recommendation_svc.get_recommendations(date_range, department=department)
-    return {
-        "department": department,
-        "count": len(items),
-        "recommendations": items,
-    }
+    return recommendation_svc.get_recommendation_payload(
+        date_range,
+        department=department,
+    )
 
 
 @app.get("/api/recommendations/{department:path}")
@@ -682,12 +676,10 @@ def get_recommendations_by_department(
 ):
     """특정 부서의 자동화 추천 카드 목록 조회."""
     date_range = _resolve_history_date_range(from_date, to_date, month)
-    items = recommendation_svc.get_recommendations(date_range, department=department)
-    return {
-        "department": department,
-        "count": len(items),
-        "recommendations": items,
-    }
+    return recommendation_svc.get_recommendation_payload(
+        date_range,
+        department=department,
+    )
 
 
 @app.get("/api/recommendations/{department}/{task_label}")

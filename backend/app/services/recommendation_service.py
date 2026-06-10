@@ -8,7 +8,10 @@ from typing import Any, List, Optional
 import pandas as pd
 
 from app.services import dashboard_service as dashboard_svc
-from app.services.analysis_pipeline import build_recommendations
+from app.services.analysis_pipeline import (
+    build_analysis_result_from_logs,
+    build_recommendations,
+)
 from app.services.recommender import enrich_recommendation_xai
 from app.utils.date_range import DateRange
 
@@ -30,6 +33,22 @@ def _merge_recommendations(items: List[dict[str, Any]]) -> List[dict[str, Any]]:
     result = list(merged.values())
     result.sort(key=lambda item: item["opportunity_score"], reverse=True)
     return result
+
+
+def _empty_recommendation_payload(
+    *,
+    department: Optional[str] = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "count": 0,
+        "recommendations": [],
+        "cluster_profiles": [],
+        "cluster_recommendations": [],
+        "recommendation_cards": [],
+    }
+    if department is not None:
+        payload["department"] = department
+    return payload
 
 
 def get_recommendations(
@@ -54,6 +73,49 @@ def get_recommendations(
     merged = _merge_recommendations(recs)
 
     return [enrich_recommendation_xai(item) for item in merged]
+
+
+def get_recommendation_payload(
+    date_range: DateRange,
+    *,
+    department: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    자동화 추천 응답 payload.
+    legacy recommendations와 cluster 기반 recommendation_cards alias를 함께 반환한다.
+    """
+    rows = dashboard_svc.fetch_prompt_log_rows_in_range(
+        date_range,
+        department=department,
+    )
+
+    if not rows:
+        return _empty_recommendation_payload(department=department)
+
+    log_dicts = [dashboard_svc.prompt_log_row_to_dict(row) for row in rows]
+    result = build_analysis_result_from_logs(log_dicts)
+
+    legacy_recommendations = _merge_recommendations(result.get("recommendations", []))
+    enriched_legacy = [
+        enrich_recommendation_xai(item)
+        for item in legacy_recommendations
+    ]
+    cluster_recommendations = (
+        result.get("recommendation_cards")
+        or result.get("cluster_recommendations")
+        or []
+    )
+
+    payload: dict[str, Any] = {
+        "count": len(enriched_legacy),
+        "recommendations": enriched_legacy,
+        "cluster_profiles": result.get("cluster_profiles", []),
+        "cluster_recommendations": cluster_recommendations,
+        "recommendation_cards": cluster_recommendations,
+    }
+    if department is not None:
+        payload["department"] = department
+    return payload
 
 
 def get_recommendation_item(
