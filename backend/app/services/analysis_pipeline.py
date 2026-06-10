@@ -238,6 +238,7 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
             "recommendations": [],
             "cluster_profiles": [],
             "cluster_recommendations": [],
+            "recommendation_cards": [],
             "sample_masked_logs": [],
             "masked_logs": [],
         })
@@ -283,6 +284,7 @@ def analyze_csv_file(csv_path: str | Path) -> dict:
         "recommendations": build_recommendations(adf),
         "cluster_profiles": cluster_profiles,
         "cluster_recommendations": cluster_recommendations,
+        "recommendation_cards": cluster_recommendations,
         "sample_masked_logs": adf.head(20).to_dict(orient="records"),
         "masked_logs": adf.to_dict(orient="records"),
     }
@@ -411,24 +413,61 @@ def build_analysis_result_from_logs(log_records: list[dict]) -> dict:
     """prompt_logs / masked_logs 레코드 목록 → 분석 결과 dict."""
     adf = pd.DataFrame(log_records)
     if adf.empty:
-        return {
+        return make_json_safe({
             "summary": build_summary_from_dataframe(adf),
             "department_stats": [],
             "recommendations": [],
             "cluster_profiles": [],
             "cluster_recommendations": [],
+            "recommendation_cards": [],
             "sample_masked_logs": [],
             "masked_logs": [],
-        }
-    return {
-        "summary": build_summary_from_dataframe(adf),
+        })
+
+    processed_rows = adf.to_dict(orient="records")
+
+    cluster_result = generate_cluster_based_recommendations(
+        processed_rows=processed_rows,
+        group_by_department=True,
+    )
+
+    clustered_rows = cluster_result.get("clustered_rows", [])
+    cluster_profiles = cluster_result.get("cluster_profiles", [])
+    cluster_recommendations = cluster_result.get("recommendation_cards", [])
+
+    cluster_by_log_id = {
+        str(row.get("log_id")): row
+        for row in clustered_rows
+        if row.get("log_id") is not None
+    }
+
+    rows = adf.to_dict(orient="records")
+    for item in rows:
+        clustered = cluster_by_log_id.get(str(item.get("log_id")))
+        if not clustered:
+            continue
+
+        item["sub_cluster_id"] = clustered.get("sub_cluster_id")
+        item["local_cluster_id"] = clustered.get("local_cluster_id")
+        item["cluster_method"] = clustered.get("cluster_method")
+        item["distance_to_centroid"] = clustered.get("distance_to_centroid")
+
+    adf = pd.DataFrame(rows)
+
+    return make_json_safe({
+        "summary": build_summary_from_dataframe(
+            adf,
+            cluster_profiles=cluster_profiles,
+            cluster_recommendations=cluster_recommendations,
+        ),
         "department_stats": build_department_stats(adf),
         "recommendations": build_recommendations(adf),
-        "cluster_profiles": [],
-        "cluster_recommendations": [],
+        "cluster_profiles": cluster_profiles,
+        "cluster_recommendations": cluster_recommendations,
+        "recommendation_cards": cluster_recommendations,
         "sample_masked_logs": adf.head(20).to_dict(orient="records"),
         "masked_logs": adf.to_dict(orient="records"),
-    }
+    })
 
 
 def split_analysis_result_by_month(result: dict) -> dict[str, dict]:

@@ -75,9 +75,18 @@ class SplitAnalysisByMonthTests(unittest.TestCase):
         result = build_analysis_result_from_logs(logs)
         monthly = split_analysis_result_by_month(result)
 
+        self.assertEqual(
+            result["recommendation_cards"],
+            result["cluster_recommendations"],
+        )
+        self.assertIn("sub_cluster_id", result["masked_logs"][0])
         self.assertEqual(list(monthly.keys()), ["2026-04", "2026-05"])
         self.assertEqual(monthly["2026-04"]["summary"]["total_logs"], 1)
         self.assertEqual(monthly["2026-05"]["summary"]["total_logs"], 1)
+        self.assertEqual(
+            monthly["2026-04"]["recommendation_cards"],
+            monthly["2026-04"]["cluster_recommendations"],
+        )
 
 
 if __name__ == "__main__":
