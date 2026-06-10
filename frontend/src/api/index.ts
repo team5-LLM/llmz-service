@@ -1,4 +1,4 @@
-import type { AnalysisResult, UploadHistoryListResponse, Summary, DepartmentStat, Recommendation, RiskOverviewResponse, RiskLevelsResponse } from './types'
+import type { AnalysisResult, UploadHistoryListResponse, Summary, DepartmentStat, RecommendationResponse, RiskOverviewResponse, RiskLevelsResponse } from './types'
 
 const DEFAULT_API_BASE_URL = 'https://llmz-team05.azurewebsites.net'
 
@@ -67,7 +67,7 @@ export async function getDepartmentDetail(department: string, month?: string) {
 
 // 부서별 자동화 추천 리스트
 // GET /api/recommendations/{department}
-export async function getRecommendationsByDepartment(department: string, month?: string): Promise<{ recommendations: Recommendation[] }> {
+export async function getRecommendationsByDepartment(department: string, month?: string): Promise<RecommendationResponse> {
   const params = month ? `?month=${month}` : ''
   const res = await fetch(`${BASE_URL}/api/recommendations/${encodeURIComponent(department)}${params}`)
   if (!res.ok) throw new Error('추천 데이터를 불러오지 못했습니다.')

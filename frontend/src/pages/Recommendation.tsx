@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import DepartmentDropdown from '../components/common/DepartmentDropdown'
 import DateFilter from '../components/common/DateFilter'
-import type { DepartmentStat, Recommendation as RecommendationItem } from '../api/types'
+import type { AutomationRecommendation, DepartmentStat } from '../api/types'
 import RecommendationDetailList from '../components/recommendation/RecommendationDetailList'
 import InfoBox from '../components/recommendation/InfoBox'
 import { getDashboardDepartments, getRecommendationsByDepartment } from '../api'
@@ -15,7 +15,7 @@ const Recommendation = () => {
   const month = useMonthParam()
 
   const [allDepts, setAllDepts] = useState<DepartmentStat[]>([])
-  const [recommendations, setRecommendations] = useState<RecommendationItem[]>([])
+  const [recommendations, setRecommendations] = useState<AutomationRecommendation[]>([])
 
   // 드롭다운 목록
   useEffect(() => {
@@ -45,7 +45,15 @@ const Recommendation = () => {
     setRecommendations([])
 
     getRecommendationsByDepartment(target, month)
-      .then((res) => { if (!cancelled) setRecommendations(res.recommendations) })
+      .then((res) => {
+        if (cancelled) return
+        const automationCards =
+          res.recommendation_cards ??
+          res.cluster_recommendations ??
+          res.recommendations ??
+          []
+        setRecommendations(automationCards)
+      })
       .catch(console.error)
 
     return () => { cancelled = true }

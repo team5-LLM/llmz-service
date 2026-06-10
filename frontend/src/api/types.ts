@@ -37,11 +37,43 @@ export interface Recommendation {
   reason: { factor: string; value: number; unit: string; description: string }[]
 }
 
+export interface ClusterRecommendationCard {
+  department: string
+  sub_cluster_id: string
+  recommendation_title: string
+  automation_candidate_type: string
+  macro_category: string
+  opportunity_score: number
+  risk_score: number
+  decision: string
+  summary: string
+  expected_effect: string[]
+  security_guardrails: string[]
+  implementation_difficulty: string
+  priority_reason: string
+  source_cluster_label: string
+  method: string
+}
+
+export type AutomationRecommendation = Recommendation | ClusterRecommendationCard
+
 export interface AnalysisResult {
   summary: Summary
   department_stats: DepartmentStat[]
   recommendations: Recommendation[]
+  cluster_profiles?: Record<string, unknown>[]
+  cluster_recommendations?: ClusterRecommendationCard[]
+  recommendation_cards?: ClusterRecommendationCard[]
   sample_masked_logs: Record<string, unknown>[]
+}
+
+export interface RecommendationResponse {
+  department?: string
+  count: number
+  recommendations: Recommendation[]
+  cluster_profiles?: Record<string, unknown>[]
+  cluster_recommendations?: ClusterRecommendationCard[]
+  recommendation_cards?: ClusterRecommendationCard[]
 }
 
 export interface UploadHistoryItem {

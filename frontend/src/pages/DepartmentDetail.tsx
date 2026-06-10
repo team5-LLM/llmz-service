@@ -6,7 +6,7 @@ import KpiCard from '../components/common/KpiCard'
 import WorkTypeChart from '../components/department/WorkTypeChart'
 import RecommendationList from '../components/department/RecommendationList'
 import { getDashboardDepartments, getDepartmentDetail, getRecommendationsByDepartment } from '../api'
-import type { DepartmentStat, Recommendation } from '../api/types'
+import type { AutomationRecommendation, DepartmentStat } from '../api/types'
 import EmptyChart from '../components/common/EmptyChart'
 import { useMonthParam } from '../hooks/useMonthParam'
 
@@ -30,7 +30,7 @@ const DepartmentDetail = () => {
 
   const [allDepts, setAllDepts] = useState<DepartmentStat[]>([])
   const [overview, setOverview] = useState(emptyOverview)
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([])
+  const [recommendations, setRecommendations] = useState<AutomationRecommendation[]>([])
 
   // 드롭다운 목록: month가 바뀔 때
   useEffect(() => {
@@ -85,7 +85,15 @@ const DepartmentDetail = () => {
       .catch(() => { if (!cancelled) setOverview(emptyOverview) })
 
     getRecommendationsByDepartment(target, month)
-      .then((res) => { if (!cancelled) setRecommendations(res.recommendations) })
+      .then((res) => {
+        if (cancelled) return
+        const automationCards =
+          res.recommendation_cards ??
+          res.cluster_recommendations ??
+          res.recommendations ??
+          []
+        setRecommendations(automationCards)
+      })
       .catch(() => { if (!cancelled) setRecommendations([]) })
 
     return () => { cancelled = true }
