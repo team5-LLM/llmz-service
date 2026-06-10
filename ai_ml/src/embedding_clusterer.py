@@ -56,8 +56,16 @@ def _get_macro_category(row: Any) -> str | None:
 def embed_texts_tfidf(texts: list[str]) -> np.ndarray:
     if not texts:
         return np.empty((0, 0), dtype=np.float32)
-    vectorizer = TfidfVectorizer(max_features=512, ngram_range=(1, 2), min_df=1)
-    matrix = vectorizer.fit_transform(texts)
+    vectorizer = TfidfVectorizer(
+        max_features=512,
+        ngram_range=(1, 2),
+        min_df=1,
+        token_pattern=r"(?u)\b\w+\b",
+    )
+    try:
+        matrix = vectorizer.fit_transform(texts)
+    except ValueError:
+        return np.eye(len(texts), dtype=np.float32)
     return matrix.toarray().astype(np.float32)
 
 
